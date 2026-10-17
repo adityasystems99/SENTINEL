@@ -139,3 +139,74 @@ export async function deleteProject(projectId) {
   if (!res.ok) throw new Error(`Failed to delete project: ${res.statusText}`);
   return res.json();
 }
+
+/* ================= Compatibility Engine APIs (Feature 1) ================= */
+
+export async function assessCompatibility(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/compatibility/assess`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Compatibility assessment failed');
+  }
+  return res.json();
+}
+
+export async function fetchCompatibilityReport(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/compatibility`);
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch compatibility report');
+  }
+  return res.json();
+}
+
+/* ================= Promise vs Reality Audit APIs (Feature 2) ================= */
+
+export async function runAudit(projectId, requirementsText, acceptanceCriteria = '', autoDetectSpec = false) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/audit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requirements_text: requirementsText,
+      acceptance_criteria: acceptanceCriteria,
+      auto_detect_spec: autoDetectSpec,
+    }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Audit execution failed');
+  }
+  return res.json();
+}
+
+export async function runAuditWithFile(projectId, file, acceptanceCriteria = '') {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (acceptanceCriteria) {
+    formData.append('acceptance_criteria', acceptanceCriteria);
+  }
+
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/audit/file`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'File-based audit execution failed');
+  }
+  return res.json();
+}
+
+export async function fetchAuditReport(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/audit`);
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch audit report');
+  }
+  return res.json();
+}
+

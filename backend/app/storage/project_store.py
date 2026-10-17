@@ -92,4 +92,49 @@ class ProjectStore:
                 shutil.rmtree(self.base_dir, ignore_errors=True)
                 os.makedirs(self.base_dir, exist_ok=True)
 
+    def get_compatibility_path(self, project_id: str) -> str:
+        return os.path.join(self.get_project_dir(project_id), "compatibility_report.json")
+
+    def save_compatibility_report(self, project_id: str, report_data: dict) -> None:
+        with self._lock:
+            proj_dir = self.get_project_dir(project_id)
+            os.makedirs(proj_dir, exist_ok=True)
+            report_path = self.get_compatibility_path(project_id)
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2)
+
+    def get_compatibility_report(self, project_id: str) -> Optional[dict]:
+        with self._lock:
+            report_path = self.get_compatibility_path(project_id)
+            if os.path.exists(report_path):
+                try:
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    return None
+            return None
+
+    def get_audit_path(self, project_id: str) -> str:
+        return os.path.join(self.get_project_dir(project_id), "audit_report.json")
+
+    def save_audit_report(self, project_id: str, report_data: dict) -> None:
+        with self._lock:
+            proj_dir = self.get_project_dir(project_id)
+            os.makedirs(proj_dir, exist_ok=True)
+            report_path = self.get_audit_path(project_id)
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2)
+
+    def get_audit_report(self, project_id: str) -> Optional[dict]:
+        with self._lock:
+            report_path = self.get_audit_path(project_id)
+            if os.path.exists(report_path):
+                try:
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except Exception:
+                    return None
+            return None
+
 project_store = ProjectStore()
+

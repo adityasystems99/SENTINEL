@@ -11,7 +11,11 @@ from ..models.project import (
     ProjectStatus,
     ProjectSummary,
 )
+from ..models.compatibility import CompatibilityReport
+from ..models.audit import AuditReport, AuditSubmissionRequest
 from ..services.ingestion import extract_archive_safely, validate_archive
+from ..services.compatibility_engine import run_compatibility_assessment
+from ..services.audit_engine import run_audit_engine
 from ..storage.project_store import project_store
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -204,3 +208,162 @@ async def get_project_capabilities(project_id: str):
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
     return get_default_capabilities(proj.detected_frameworks)
+
+
+# ==========================================
+# Feature 1: Compatibility Engine Endpoints
+# ==========================================
+
+@router.post("/{project_id}/compatibility/assess", response_model=CompatibilityReport)
+async def assess_project_compatibility(project_id: str):
+    """Run safe static analysis on the project to determine compatibility and integration readiness."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+
+    if proj.status != ProjectStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot assess project in status '{proj.status.value}'. Project must be 'ready'."
+        )
+
+    source_dir = project_store.get_source_dir(project_id)
+    if not os.path.exists(source_dir):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source directory for project '{project_id}' does not exist on disk."
+        )
+
+    report = run_compatibility_assessment(project_id, source_dir)
+    project_store.save_compatibility_report(project_id, report.model_dump())
+    return report
+
+
+@router.get("/{project_id}/compatibility", response_model=CompatibilityReport)
+async def get_compatibility_report(project_id: str):
+    """Retrieve the latest compatibility assessment report for a project."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+
+    report_dict = project_store.get_compatibility_report(project_id)
+    if not report_dict:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No compatibility report found for project '{project_id}'. Run an assessment first."
+        )
+    return CompatibilityReport(**report_dict)
+
+
+# ==========================================
+# Feature 2: Promise vs Reality Audit Endpoints
+# ==========================================
+
+SUPPORTED_SPEC_EXTENSIONS = {".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".rst", ".csv"}
+
+@router.post("/{project_id}/audit", response_model=AuditReport)
+async def run_audit(project_id: str, request: AuditSubmissionRequest):
+    """Run source-code audit engine comparing provided requirements with actual implementation."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+
+    if proj.status != ProjectStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot audit project in status '{proj.status.value}'. Project must be 'ready'."
+        )
+
+    source_dir = project_store.get_source_dir(project_id)
+    if not os.path.exists(source_dir):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source directory for project '{project_id}' does not exist on disk."
+        )
+
+    if not request.requirements_text and not request.auto_detect_spec:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Requirements document is required. Provide 'requirements_text' or enable 'auto_detect_spec'."
+        )
+
+    report = run_audit_engine(
+        project_id=project_id,
+        source_dir=source_dir,
+        requirements_text=request.requirements_text,
+        acceptance_criteria=request.acceptance_criteria,
+        auto_detect_spec=request.auto_detect_spec,
+    )
+    project_store.save_audit_report(project_id, report.model_dump())
+    return report
+
+
+@router.post("/{project_id}/audit/file", response_model=AuditReport)
+async def run_audit_with_file(
+    project_id: str,
+    file: UploadFile = File(...),
+    acceptance_criteria: Optional[str] = Form(None),
+):
+    """Run source-code audit engine by uploading a requirements document (.md, .txt, .json, .yaml, .rst)."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+
+    if proj.status != ProjectStatus.READY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot audit project in status '{proj.status.value}'. Project must be 'ready'."
+        )
+
+    source_dir = project_store.get_source_dir(project_id)
+    if not os.path.exists(source_dir):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source directory for project '{project_id}' does not exist on disk."
+        )
+
+    # Validate file format
+    filename = file.filename or "unknown"
+    _, ext = os.path.splitext(filename)
+    ext_lower = ext.lower()
+    if ext_lower not in SUPPORTED_SPEC_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported document format '{ext}'. Only text-based requirements documents ({', '.join(sorted(SUPPORTED_SPEC_EXTENSIONS))}) are supported."
+        )
+
+    try:
+        content_bytes = await file.read()
+        requirements_text = content_bytes.decode("utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read requirements file: {str(e)}"
+        )
+
+    report = run_audit_engine(
+        project_id=project_id,
+        source_dir=source_dir,
+        requirements_text=requirements_text,
+        acceptance_criteria=acceptance_criteria,
+        spec_filename=filename,
+    )
+    project_store.save_audit_report(project_id, report.model_dump())
+    return report
+
+
+@router.get("/{project_id}/audit", response_model=AuditReport)
+async def get_audit_report(project_id: str):
+    """Retrieve the latest promise vs. reality audit report for a project."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+
+    report_dict = project_store.get_audit_report(project_id)
+    if not report_dict:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No audit report found for project '{project_id}'. Run an audit first."
+        )
+    return AuditReport(**report_dict)
+

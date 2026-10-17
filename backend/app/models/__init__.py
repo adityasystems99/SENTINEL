@@ -7,6 +7,20 @@ from .project import (
     ProjectSummary,
     ProjectInspectionResult,
 )
+from .compatibility import (
+    CompatibilityStatus,
+    DetectedTechnology,
+    TelemetryReadiness,
+    CompatibilityReport,
+)
+from .audit import (
+    AuditFindingStatus,
+    CodeLocation,
+    AuditFinding,
+    PrioritizedWorkItem,
+    AuditReport,
+    AuditSubmissionRequest,
+)
 
 __all__ = [
     "TelemetryEvent",
@@ -24,4 +38,14 @@ __all__ = [
     "ProjectMetadata",
     "ProjectSummary",
     "ProjectInspectionResult",
+    "CompatibilityStatus",
+    "DetectedTechnology",
+    "TelemetryReadiness",
+    "CompatibilityReport",
+    "AuditFindingStatus",
+    "CodeLocation",
+    "AuditFinding",
+    "PrioritizedWorkItem",
+    "AuditReport",
+    "AuditSubmissionRequest",
 ]
