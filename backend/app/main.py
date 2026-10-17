@@ -1,4 +1,4 @@
-"""SENTINEL FastAPI Application Entrypoint."""
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -14,19 +14,21 @@ from .routes import (
 )
 from .services.rag import initialize_knowledge_base
 
-app = FastAPI(
-    title=settings.app_name,
-    description="AI-powered developer intelligence platform for project ingestion, incident correlation, root-cause ranking, and telemetry ingestion.",
-    version="1.0.0",
-)
-
-@app.on_event("startup")
-async def startup_event():
-    """Auto-index version-controlled knowledge base on boot."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup indexing and graceful shutdown."""
     try:
         initialize_knowledge_base()
     except Exception as e:
         print(f"Warning: Failed to auto-index knowledge base on startup: {e}")
+    yield
+
+app = FastAPI(
+    title=settings.app_name,
+    description="AI-powered developer intelligence platform for project ingestion, incident correlation, root-cause ranking, and telemetry ingestion.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 # CORS middleware for local frontend communication
 app.add_middleware(

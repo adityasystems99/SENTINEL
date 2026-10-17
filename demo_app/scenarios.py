@@ -3,6 +3,40 @@ import time
 from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 from .service import DemoAppService
 
+# Ground truth catalog for evaluation and validation
+SCENARIO_CATALOG = {
+    "db_pool_exhaustion": {
+        "scenario_id": "db_pool_exhaustion",
+        "title": "Database Connection Pool Saturation",
+        "ground_truth_root_cause": "inventory-service",
+        "failure_mechanism": "HikariCP pool limit reached (maxPoolSize=10), causing 3000ms query timeouts and 503 cascades.",
+        "expected_symptom_cascade": ["inventory-service", "order-service", "web-gateway"],
+        "historical_incident_id": "INC-2025-0812",
+        "historical_runbook_id": "RUNBOOK-INV-001",
+        "category": "infrastructure_saturation",
+    },
+    "bad_auth_deployment": {
+        "scenario_id": "bad_auth_deployment",
+        "title": "Faulty Auth Service Release Deployment",
+        "ground_truth_root_cause": "auth-service",
+        "failure_mechanism": "NullPointerDereference in TokenValidator.verify() following deployment v2.4.1-rc1.",
+        "expected_symptom_cascade": ["auth-service", "web-gateway"],
+        "historical_incident_id": "INC-2025-1104",
+        "historical_runbook_id": "RUNBOOK-AUTH-002",
+        "category": "deployment_regression",
+    },
+    "payment_timeout": {
+        "scenario_id": "payment_timeout",
+        "title": "Downstream Payment Provider Read Timeout",
+        "ground_truth_root_cause": "payment-service",
+        "failure_mechanism": "ConnectTimeout on api.stripe-mock.com after 5000ms read timeout, returning HTTP 504.",
+        "expected_symptom_cascade": ["payment-service", "order-service", "web-gateway"],
+        "historical_incident_id": "INC-2026-0115",
+        "historical_runbook_id": None,
+        "category": "downstream_timeout",
+    },
+}
+
 def inject_db_pool_exhaustion(service: DemoAppService, count: int = 3):
     """Scenario 1: Database connection pool exhaustion on inventory-service."""
     service.db_pool_exhausted = True

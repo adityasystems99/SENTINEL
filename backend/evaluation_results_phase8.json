@@ -1,0 +1,94 @@
+{
+  "evaluation_name": "SENTINEL Phase 8 Real-World Incident Evaluation",
+  "timestamp": 1792241750.2426112,
+  "total_scenarios_evaluated": 4,
+  "summary_metrics": {
+    "baseline_error_count_top1_accuracy": 0.75,
+    "sentinel_causal_graph_top1_accuracy": 1.0,
+    "sentinel_causal_graph_top3_accuracy": 1.0,
+    "historical_rag_hit1_accuracy": 1.0,
+    "rag_noise_rejection_verified": true
+  },
+  "detailed_scenarios": [
+    {
+      "scenario_id": "db_pool_exhaustion",
+      "title": "Database Connection Pool Saturation",
+      "ground_truth_root_cause": "inventory-service",
+      "telemetry_events_ingested": 24,
+      "baseline_top_1": "inventory-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "inventory-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2025-0812",
+      "top_rag_similarity": 0.7764,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 2 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [inventory-service]"
+      ]
+    },
+    {
+      "scenario_id": "bad_auth_deployment",
+      "title": "Faulty Auth Service Release Deployment",
+      "ground_truth_root_cause": "auth-service",
+      "telemetry_events_ingested": 13,
+      "baseline_top_1": "auth-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "auth-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "RUNBOOK-AUTH-002",
+      "top_rag_similarity": 0.7892,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 8 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Code deployment event on [auth-service] immediately preceding failures"
+      ]
+    },
+    {
+      "scenario_id": "payment_timeout",
+      "title": "Downstream Payment Provider Read Timeout",
+      "ground_truth_root_cause": "payment-service",
+      "telemetry_events_ingested": 28,
+      "baseline_top_1": "payment-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "payment-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2026-0115",
+      "top_rag_similarity": 0.7872,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 2 downstream impact(s)",
+        "Direct error/exception on [payment-service]"
+      ]
+    },
+    {
+      "scenario_id": "misleading_gateway_flood",
+      "title": "Downstream Symptom Flood vs Single Upstream Trigger",
+      "ground_truth_root_cause": "order-service",
+      "telemetry_events_ingested": 21,
+      "baseline_top_1": "web-gateway",
+      "baseline_correct": false,
+      "sentinel_top_1": "order-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": null,
+      "top_rag_similarity": 0.0,
+      "rag_relevant_match": false,
+      "noise_properly_rejected": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [order-service]"
+      ]
+    }
+  ]
+}

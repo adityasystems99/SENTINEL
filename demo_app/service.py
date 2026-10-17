@@ -36,6 +36,7 @@ class DemoAppService:
             trace_id=trace_id,
             span_id=gw_span,
             status_code=200,
+            duration_ms=185.0,
         ))
 
         # 2. Auth Service verification
@@ -52,6 +53,7 @@ class DemoAppService:
                 span_id=auth_span,
                 parent_span_id=gw_span,
                 status_code=500,
+                duration_ms=11.2,
                 metadata={"exception": "AttributeError", "module": "auth.validator", "line": 42}
             ))
             events.append(TelemetryEvent(
@@ -63,6 +65,7 @@ class DemoAppService:
                 trace_id=trace_id,
                 span_id=gw_span,
                 status_code=500,
+                duration_ms=85.0,
             ))
             self.emit(events)
             return {"success": False, "error": "Auth service failure", "trace_id": trace_id}
@@ -77,6 +80,7 @@ class DemoAppService:
             span_id=auth_span,
             parent_span_id=gw_span,
             status_code=200,
+            duration_ms=22.5,
         ))
 
         # 3. Order Service creation
@@ -90,6 +94,7 @@ class DemoAppService:
             trace_id=trace_id,
             span_id=order_span,
             parent_span_id=gw_span,
+            duration_ms=145.0,
         ))
 
         # 4. Inventory Service reservation
@@ -106,6 +111,7 @@ class DemoAppService:
                 span_id=inv_span,
                 parent_span_id=order_span,
                 status_code=503,
+                duration_ms=3002.5,
                 metadata={"pool": "inventory_db", "active_connections": 10, "idle": 0}
             ))
             events.append(TelemetryEvent(
@@ -118,6 +124,7 @@ class DemoAppService:
                 span_id=order_span,
                 parent_span_id=gw_span,
                 status_code=500,
+                duration_ms=3080.0,
             ))
             events.append(TelemetryEvent(
                 timestamp=now + 0.18,
@@ -128,6 +135,7 @@ class DemoAppService:
                 trace_id=trace_id,
                 span_id=gw_span,
                 status_code=500,
+                duration_ms=3180.0,
             ))
             self.emit(events)
             return {"success": False, "error": "Inventory DB pool exhausted", "trace_id": trace_id}
@@ -142,6 +150,7 @@ class DemoAppService:
             span_id=inv_span,
             parent_span_id=order_span,
             status_code=200,
+            duration_ms=28.0,
         ))
 
         # 5. Payment Service processing
@@ -157,6 +166,7 @@ class DemoAppService:
                 span_id=pay_span,
                 parent_span_id=order_span,
                 status_code=504,
+                duration_ms=5001.0,
             ))
             events.append(TelemetryEvent(
                 timestamp=now + 0.25,
@@ -168,6 +178,18 @@ class DemoAppService:
                 span_id=order_span,
                 parent_span_id=gw_span,
                 status_code=504,
+                duration_ms=5110.0,
+            ))
+            events.append(TelemetryEvent(
+                timestamp=now + 0.28,
+                service="web-gateway",
+                level=LogLevel.ERROR,
+                event_type=EventType.TRACE,
+                message="HTTP 504: Gateway Timeout downstream",
+                trace_id=trace_id,
+                span_id=gw_span,
+                status_code=504,
+                duration_ms=5220.0,
             ))
             self.emit(events)
             return {"success": False, "error": "Payment gateway timeout", "trace_id": trace_id}
@@ -182,6 +204,7 @@ class DemoAppService:
             span_id=pay_span,
             parent_span_id=order_span,
             status_code=200,
+            duration_ms=95.0,
         ))
 
         events.append(TelemetryEvent(
@@ -193,6 +216,7 @@ class DemoAppService:
             trace_id=trace_id,
             span_id=gw_span,
             status_code=200,
+            duration_ms=185.0,
         ))
 
         self.emit(events)

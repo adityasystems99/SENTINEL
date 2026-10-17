@@ -174,9 +174,19 @@ vector_store = LocalVectorStore()
 def initialize_knowledge_base(knowledge_dir: str = "backend/knowledge") -> int:
     """Discover and ingest the version-controlled sample knowledge base."""
     if not os.path.isabs(knowledge_dir):
-        # Resolve relative to repo root
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        knowledge_dir = os.path.join(repo_root, knowledge_dir)
+        # Resolve relative to repo root (4 levels up from backend/app/services/rag/)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+        candidate = os.path.join(repo_root, knowledge_dir)
+        if os.path.exists(candidate):
+            knowledge_dir = candidate
+        else:
+            # Fallback: check relative to backend directory (3 levels up)
+            backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            cand2 = os.path.join(backend_dir, "knowledge")
+            if os.path.exists(cand2):
+                knowledge_dir = cand2
+            elif os.path.exists(knowledge_dir):
+                knowledge_dir = os.path.abspath(knowledge_dir)
 
     docs, chunks = load_knowledge_directory(knowledge_dir)
     indexed_count = vector_store.add_chunks(chunks)
