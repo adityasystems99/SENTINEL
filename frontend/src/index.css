@@ -1,17 +1,16 @@
 :root {
-  --bg-primary: #0a0d14;
-  --bg-secondary: #101622;
-  --bg-card: rgba(18, 24, 38, 0.75);
-  --bg-card-hover: rgba(26, 34, 52, 0.85);
+  --bg-primary: #080D18;
+  --bg-secondary: #0e1626;
+  --bg-card: rgba(14, 22, 38, 0.7);
+  --bg-card-hover: rgba(22, 32, 54, 0.85);
   --border: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(79, 134, 247, 0.4);
-  --text-primary: #f0f4f8;
-  --text-secondary: #94a3b8;
+  --border-focus: rgba(115, 217, 245, 0.6);
+  --text-primary: #F3F0E8;
+  --text-secondary: #A0A9BC;
   --text-muted: #64748b;
-  --accent-blue: #3b82f6;
-  --accent-cyan: #06b6d4;
+  --accent: #73D9F5;
+  --accent-glow: rgba(115, 217, 245, 0.25);
   --accent-red: #ef4444;
-  --accent-red-glow: rgba(239, 68, 68, 0.25);
   --accent-yellow: #f59e0b;
   --accent-green: #10b981;
   --accent-purple: #8b5cf6;
@@ -35,29 +34,62 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 code, pre {
   font-family: var(--font-mono);
 }
 
-/* Glassmorphism containers */
+/* Glassmorphism panels */
 .glass-panel {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
 }
 
+/* Feature card styles with subtle glow and focus */
+.feature-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-decoration: none;
+  color: inherit;
+  outline: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: 0 12px 30px rgba(115, 217, 245, 0.12), 0 0 1px 1px var(--accent-glow);
+  background: var(--bg-card-hover);
+}
+
+.feature-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--border-focus);
+}
+
+/* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -76,9 +108,9 @@ code, pre {
 }
 
 .badge-medium {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(115, 217, 245, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(115, 217, 245, 0.3);
 }
 
 .badge-low {
@@ -87,12 +119,137 @@ code, pre {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-button {
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s ease;
+/* =========================================================================
+   ANIMATED START PROJECT BUTTON & MASKED CONIC GRADIENT RING
+   ========================================================================= */
+
+@keyframes orbit {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
-button:active {
-  transform: scale(0.98);
+@keyframes hue {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.start-project-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px 9px 9px;
+  border-radius: 9999px;
+  background: rgba(14, 22, 38, 0.65);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.25s ease;
+  user-select: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.start-project-btn:hover:not(:disabled) {
+  border-color: rgba(115, 217, 245, 0.4);
+  box-shadow: 0 6px 24px rgba(115, 217, 245, 0.2);
+  transform: translateY(-1px);
+}
+
+.start-project-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.start-project-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+
+/* 34px circular dark icon disc containing the arrow and animated ring */
+.start-icon-disc {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #080D18;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+/* Centered arrow above the ring at z-index: 2 */
+.start-arrow {
+  position: relative;
+  z-index: 2;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Separate ring element using masked conic gradient */
+.start-project-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0turn,
+    transparent 0 58%,
+    #ff6ea9 68%,
+    #ffd36e 76%,
+    #6ef0ff 84%,
+    transparent 92%
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2.5px),
+    #000 calc(100% - 2.5px)
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2.5px),
+    #000 calc(100% - 2.5px)
+  );
+  animation: orbit 2.6s linear infinite,
+             hue 7s linear infinite;
+  pointer-events: none;
+}
+
+/* On hover, pause the orbit but continue hue cycling */
+.start-project-btn:hover .start-project-ring {
+  animation-play-state: paused, running;
+}
+
+/* Under prefers-reduced-motion: reduce, disable both animations and retain fixed ring angle */
+@media (prefers-reduced-motion: reduce) {
+  .start-project-ring {
+    animation: none;
+    transform: rotate(45deg);
+  }
+}
+
+/* Loading Spinner */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

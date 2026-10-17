@@ -59,21 +59,48 @@ export async function clearAllData() {
 
 /* ================= Project Ingestion & Workspace APIs ================= */
 
-export async function uploadProjectArchive(file, name) {
-  const formData = new FormData();
-  formData.append('file', file);
-  if (name) formData.append('name', name);
+export async function uploadProjectArchive(file, name, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
 
-  const res = await fetch(`${BASE_URL}/projects/upload`, {
-    method: 'POST',
-    body: formData,
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const percent = Math.round((evt.loaded / evt.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    xhr.open('POST', `${BASE_URL}/projects/upload`);
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data);
+        } catch (e) {
+          reject(new Error('Invalid JSON response from server'));
+        }
+      } else {
+        let errorMsg = `Upload failed with status ${xhr.status}`;
+        try {
+          const errData = JSON.parse(xhr.responseText);
+          if (errData.detail) errorMsg = errData.detail;
+        } catch (_) {}
+        reject(new Error(errorMsg));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during project archive upload'));
+    };
+
+    xhr.send(formData);
   });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Upload failed with status ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchProjects() {
