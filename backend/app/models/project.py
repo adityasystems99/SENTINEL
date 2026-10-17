@@ -31,6 +31,7 @@ class ProjectMetadata(BaseModel):
     excluded_items_count: int = 0
     detected_frameworks: List[str] = Field(default_factory=list)
     error_message: Optional[str] = None
+    owner_id: str = "demo_user"
 
 class ProjectSummary(BaseModel):
     project_id: str
@@ -39,6 +40,7 @@ class ProjectSummary(BaseModel):
     created_at: float
     file_count: int
     detected_frameworks: List[str]
+    owner_id: str = "demo_user"
 
 class ProjectInspectionResult(BaseModel):
     project_id: str

@@ -43,12 +43,18 @@ def convert_otlp_traces_payload(payload: Dict[str, Any]) -> List[TelemetryEvent]
     1. Standard OTLP hierarchy: resourceSpans -> scopeSpans -> spans
     2. Flat/simplified OpenTelemetry dictionaries (direct span lists)
     """
+    if not isinstance(payload, dict):
+        return []
+
     events: List[TelemetryEvent] = []
     now = time.time()
+    max_spans = 1000
 
     # 1. Standard OTLP payload with resourceSpans
     if "resourceSpans" in payload:
         for r_span in payload.get("resourceSpans", []):
+            if len(events) >= max_spans:
+                break
             resource = r_span.get("resource", {})
             raw_attrs = resource.get("attributes", [])
             resource_metadata: Dict[str, Any] = {}
@@ -58,11 +64,15 @@ def convert_otlp_traces_payload(payload: Dict[str, Any]) -> List[TelemetryEvent]
                 k = attr.get("key")
                 v = parse_otlp_attribute_value(attr.get("value"))
                 resource_metadata[k] = v
-                if k in ("service.name", "service_name"):
-                    service_name = str(v)
+                if k in ("service.name", "service_name") and v:
+                    service_name = str(v).strip() or "unknown-service"
 
             for scope_span in r_span.get("scopeSpans", []):
+                if len(events) >= max_spans:
+                    break
                 for span in scope_span.get("spans", []):
+                    if len(events) >= max_spans:
+                        break
                     # Timing
                     start_nano_raw = span.get("startTimeUnixNano")
                     end_nano_raw = span.get("endTimeUnixNano")
@@ -74,8 +84,16 @@ def convert_otlp_traces_payload(payload: Dict[str, Any]) -> List[TelemetryEvent]
                         start_nano = int(now * 1e9)
                         end_nano = start_nano
 
-                    timestamp = start_nano / 1e9
-                    duration_ms = max(0.0, round((end_nano - start_nano) / 1e6, 2))
+                    raw_ts = start_nano / 1e9
+                    # Timestamp sanity check: reject/clamp extreme future (>1d) or past (>30d)
+                    if raw_ts < 0 or raw_ts < (now - 30 * 86400) or raw_ts > (now + 86400):
+                        timestamp = now
+                    else:
+                        timestamp = raw_ts
+
+                    raw_duration = round((end_nano - start_nano) / 1e6, 2)
+                    # Duration sanity check: non-negative and <= 1 hour (3,600,000 ms)
+                    duration_ms = min(3600000.0, max(0.0, raw_duration))
 
                     # Trace and Span IDs
                     trace_id = span.get("traceId")
@@ -160,17 +178,35 @@ def convert_otlp_traces_payload(payload: Dict[str, Any]) -> List[TelemetryEvent]
     # 2. Simplified flat span list
     elif "spans" in payload:
         for span in payload.get("spans", []):
-            service = span.get("service_name") or span.get("service") or "unknown-service"
+            if len(events) >= max_spans:
+                break
+            service = str(span.get("service_name") or span.get("service") or "unknown-service").strip() or "unknown-service"
             trace_id = span.get("trace_id") or span.get("traceId")
             span_id = span.get("span_id") or span.get("spanId")
             parent_span_id = span.get("parent_span_id") or span.get("parentSpanId")
             status_code = span.get("status_code") or span.get("http_status")
-            duration_ms = span.get("duration_ms", 0.0)
-            is_error = span.get("is_error", False) or (status_code and status_code >= 400)
             
+            raw_duration = span.get("duration_ms", 0.0)
+            try:
+                raw_duration_float = float(raw_duration)
+            except (ValueError, TypeError):
+                raw_duration_float = 0.0
+            duration_ms = min(3600000.0, max(0.0, raw_duration_float))
+
+            raw_ts = span.get("timestamp", now)
+            try:
+                raw_ts_float = float(raw_ts)
+                if raw_ts_float < 0 or raw_ts_float < (now - 30 * 86400) or raw_ts_float > (now + 86400):
+                    ts = now
+                else:
+                    ts = raw_ts_float
+            except (ValueError, TypeError):
+                ts = now
+
+            is_error = span.get("is_error", False) or (status_code and status_code >= 400)
             level = LogLevel.ERROR if is_error else LogLevel.INFO
             events.append(TelemetryEvent(
-                timestamp=span.get("timestamp", now),
+                timestamp=ts,
                 service=service,
                 level=level,
                 event_type=EventType.TRACE,

@@ -3,7 +3,8 @@ import os
 import time
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from ..config import settings
 from ..models.project import (
     CapabilityStatus,
     ProjectInspectionResult,
@@ -17,6 +18,8 @@ from ..services.ingestion import extract_archive_safely, validate_archive
 from ..services.compatibility_engine import run_compatibility_assessment
 from ..services.audit_engine import run_audit_engine
 from ..storage.project_store import project_store
+from ..auth.security import UserContext, get_current_user, verify_project_ownership
+from ..auth.rate_limiter import check_rate_limit
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -61,18 +64,30 @@ def get_default_capabilities(detected_frameworks: List[str]) -> List[CapabilityS
         ),
     ]
 
-@router.post("/upload", response_model=ProjectMetadata, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload",
+    response_model=ProjectMetadata,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="upload"))],
+)
 async def upload_project_archive(
     file: UploadFile = File(...),
     name: Optional[str] = Form(None),
+    current_user: UserContext = Depends(get_current_user),
 ):
-    """Securely upload, validate, and isolate a project ZIP archive."""
-    # 1. Read file bytes
+    """Securely upload, validate, and isolate a project ZIP archive scoped to the authenticated user."""
+    # 1. Read file bytes and enforce size bound
     file_bytes = await file.read()
+    if len(file_bytes) > settings.max_upload_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Archive exceeds maximum upload size limit of {settings.max_upload_size_bytes} bytes.",
+        )
+
     project_name = name or (file.filename.rsplit(".", 1)[0] if file.filename else "untitled-project")
     project_id = f"prj-{uuid.uuid4().hex[:8]}"
 
-    # Initial metadata record (state: uploaded)
+    # Initial metadata record (state: uploaded, bound to current user)
     metadata = ProjectMetadata(
         project_id=project_id,
         name=project_name,
@@ -80,6 +95,7 @@ async def upload_project_archive(
         created_at=time.time(),
         updated_at=time.time(),
         archive_size_bytes=len(file_bytes),
+        owner_id=current_user.user_id,
     )
 
     # 2. State transition: validating
@@ -120,11 +136,14 @@ async def upload_project_archive(
     return metadata
 
 @router.get("", response_model=List[ProjectSummary])
-async def list_projects():
-    """List all ingested projects."""
+async def list_projects(current_user: UserContext = Depends(get_current_user)):
+    """List ingested projects scoped to the authenticated user or workspace."""
     projects = project_store.list_projects()
     summaries = []
     for p in reversed(projects):
+        # Admins can see all projects; regular users can only see projects they own
+        if current_user.role != "admin" and p.owner_id != current_user.user_id:
+            continue
         summaries.append(ProjectSummary(
             project_id=p.project_id,
             name=p.name,
@@ -132,31 +151,39 @@ async def list_projects():
             created_at=p.created_at,
             file_count=p.file_count,
             detected_frameworks=p.detected_frameworks,
+            owner_id=p.owner_id,
         ))
     return summaries
 
 @router.get("/{project_id}", response_model=ProjectMetadata)
-async def get_project(project_id: str):
-    """Retrieve metadata and lifecycle state for a specific project."""
+async def get_project(project_id: str, current_user: UserContext = Depends(get_current_user)):
+    """Retrieve metadata and lifecycle state for a specific project with ownership verification."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
     return proj
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: str):
-    """Delete a project workspace and associated metadata."""
+async def delete_project(project_id: str, current_user: UserContext = Depends(get_current_user)):
+    """Delete a project workspace and associated metadata with ownership verification."""
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
+
     success = project_store.delete_project(project_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
     return {"status": "deleted", "project_id": project_id}
 
 @router.post("/{project_id}/inspect", response_model=ProjectInspectionResult)
-async def inspect_project(project_id: str):
+async def inspect_project(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Start inspection of an ingested project workspace and generate capability availability."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     if proj.status != ProjectStatus.READY:
         raise HTTPException(
@@ -197,16 +224,17 @@ async def inspect_project(project_id: str):
     )
 
 @router.get("/{project_id}/inspect", response_model=ProjectInspectionResult)
-async def get_project_inspection(project_id: str):
+async def get_project_inspection(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Retrieve inspection status and workspace capabilities for a project."""
-    return await inspect_project(project_id)
+    return await inspect_project(project_id, current_user=current_user)
 
 @router.get("/{project_id}/capabilities", response_model=List[CapabilityStatus])
-async def get_project_capabilities(project_id: str):
+async def get_project_capabilities(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Retrieve available SENTINEL capabilities and their readiness for this project."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
     return get_default_capabilities(proj.detected_frameworks)
 
 
@@ -214,12 +242,17 @@ async def get_project_capabilities(project_id: str):
 # Feature 1: Compatibility Engine Endpoints
 # ==========================================
 
-@router.post("/{project_id}/compatibility/assess", response_model=CompatibilityReport)
-async def assess_project_compatibility(project_id: str):
+@router.post(
+    "/{project_id}/compatibility/assess",
+    response_model=CompatibilityReport,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="compatibility"))],
+)
+async def assess_project_compatibility(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Run safe static analysis on the project to determine compatibility and integration readiness."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     if proj.status != ProjectStatus.READY:
         raise HTTPException(
@@ -240,11 +273,12 @@ async def assess_project_compatibility(project_id: str):
 
 
 @router.get("/{project_id}/compatibility", response_model=CompatibilityReport)
-async def get_compatibility_report(project_id: str):
+async def get_compatibility_report(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Retrieve the latest compatibility assessment report for a project."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     report_dict = project_store.get_compatibility_report(project_id)
     if not report_dict:
@@ -261,12 +295,21 @@ async def get_compatibility_report(project_id: str):
 
 SUPPORTED_SPEC_EXTENSIONS = {".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".rst", ".csv"}
 
-@router.post("/{project_id}/audit", response_model=AuditReport)
-async def run_audit(project_id: str, request: AuditSubmissionRequest):
+@router.post(
+    "/{project_id}/audit",
+    response_model=AuditReport,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="audit"))],
+)
+async def run_audit(
+    project_id: str,
+    request: AuditSubmissionRequest,
+    current_user: UserContext = Depends(get_current_user),
+):
     """Run source-code audit engine comparing provided requirements with actual implementation."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     if proj.status != ProjectStatus.READY:
         raise HTTPException(
@@ -298,16 +341,22 @@ async def run_audit(project_id: str, request: AuditSubmissionRequest):
     return report
 
 
-@router.post("/{project_id}/audit/file", response_model=AuditReport)
+@router.post(
+    "/{project_id}/audit/file",
+    response_model=AuditReport,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="audit"))],
+)
 async def run_audit_with_file(
     project_id: str,
     file: UploadFile = File(...),
     acceptance_criteria: Optional[str] = Form(None),
+    current_user: UserContext = Depends(get_current_user),
 ):
     """Run source-code audit engine by uploading a requirements document (.md, .txt, .json, .yaml, .rst)."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     if proj.status != ProjectStatus.READY:
         raise HTTPException(
@@ -322,7 +371,7 @@ async def run_audit_with_file(
             detail=f"Source directory for project '{project_id}' does not exist on disk."
         )
 
-    # Validate file format
+    # Validate file format and size
     filename = file.filename or "unknown"
     _, ext = os.path.splitext(filename)
     ext_lower = ext.lower()
@@ -332,8 +381,14 @@ async def run_audit_with_file(
             detail=f"Unsupported document format '{ext}'. Only text-based requirements documents ({', '.join(sorted(SUPPORTED_SPEC_EXTENSIONS))}) are supported."
         )
 
+    content_bytes = await file.read()
+    if len(content_bytes) > 10 * 1024 * 1024:  # 10 MB limit for spec documents
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Requirements document exceeds maximum allowed size (10 MB).",
+        )
+
     try:
-        content_bytes = await file.read()
         requirements_text = content_bytes.decode("utf-8", errors="replace")
     except Exception as e:
         raise HTTPException(
@@ -353,11 +408,12 @@ async def run_audit_with_file(
 
 
 @router.get("/{project_id}/audit", response_model=AuditReport)
-async def get_audit_report(project_id: str):
+async def get_audit_report(project_id: str, current_user: UserContext = Depends(get_current_user)):
     """Retrieve the latest promise vs. reality audit report for a project."""
     proj = project_store.get_project(project_id)
     if not proj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Project '{project_id}' not found")
+    verify_project_ownership(proj, current_user)
 
     report_dict = project_store.get_audit_report(project_id)
     if not report_dict:
@@ -366,4 +422,3 @@ async def get_audit_report(project_id: str):
             detail=f"No audit report found for project '{project_id}'. Run an audit first."
         )
     return AuditReport(**report_dict)
-

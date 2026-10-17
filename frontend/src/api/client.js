@@ -1,7 +1,17 @@
 /**
  * API client for interacting with the SENTINEL FastAPI backend.
+ * Provides token authentication, configurable base URL, and consistent error handling.
  */
-const BASE_URL = '/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const API_KEY = import.meta.env.VITE_SENTINEL_API_KEY || 'demo-sentinel-key-2026';
+
+function authHeaders(extraHeaders = {}) {
+  return {
+    'Authorization': `Bearer ${API_KEY}`,
+    'X-API-Key': API_KEY,
+    ...extraHeaders,
+  };
+}
 
 export async function fetchHealth() {
   const res = await fetch(`${BASE_URL}/health`);
@@ -10,13 +20,17 @@ export async function fetchHealth() {
 }
 
 export async function fetchIncidents() {
-  const res = await fetch(`${BASE_URL}/incidents`);
+  const res = await fetch(`${BASE_URL}/incidents`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to fetch incidents: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchIncidentDetail(incidentId) {
-  const res = await fetch(`${BASE_URL}/incidents/${incidentId}`);
+  const res = await fetch(`${BASE_URL}/incidents/${incidentId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to fetch incident ${incidentId}: ${res.statusText}`);
   return res.json();
 }
@@ -24,7 +38,7 @@ export async function fetchIncidentDetail(incidentId) {
 export async function triggerIncidentAnalysis(windowSeconds = 300) {
   const res = await fetch(`${BASE_URL}/incidents/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ window_seconds: windowSeconds }),
   });
   if (!res.ok) {
@@ -37,6 +51,7 @@ export async function triggerIncidentAnalysis(windowSeconds = 300) {
 export async function triggerDemoScenario(scenarioName, count = 3) {
   const res = await fetch(`${BASE_URL}/demo/scenario/${scenarioName}?count=${count}`, {
     method: 'POST',
+    headers: authHeaders(),
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
@@ -46,13 +61,18 @@ export async function triggerDemoScenario(scenarioName, count = 3) {
 }
 
 export async function fetchTelemetryEvents(limit = 50) {
-  const res = await fetch(`${BASE_URL}/telemetry/events?limit=${limit}`);
+  const res = await fetch(`${BASE_URL}/telemetry/events?limit=${limit}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to fetch telemetry: ${res.statusText}`);
   return res.json();
 }
 
 export async function clearAllData() {
-  const res = await fetch(`${BASE_URL}/telemetry/events`, { method: 'DELETE' });
+  const res = await fetch(`${BASE_URL}/telemetry/events`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to reset telemetry: ${res.statusText}`);
   return res.json();
 }
@@ -76,6 +96,8 @@ export async function uploadProjectArchive(file, name, onProgress) {
     }
 
     xhr.open('POST', `${BASE_URL}/projects/upload`);
+    xhr.setRequestHeader('Authorization', `Bearer ${API_KEY}`);
+    xhr.setRequestHeader('X-API-Key', API_KEY);
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -104,13 +126,17 @@ export async function uploadProjectArchive(file, name, onProgress) {
 }
 
 export async function fetchProjects() {
-  const res = await fetch(`${BASE_URL}/projects`);
+  const res = await fetch(`${BASE_URL}/projects`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to list projects: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchProjectMetadata(projectId) {
-  const res = await fetch(`${BASE_URL}/projects/${projectId}`);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to get project: ${res.statusText}`);
   return res.json();
 }
@@ -118,6 +144,7 @@ export async function fetchProjectMetadata(projectId) {
 export async function inspectProject(projectId) {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/inspect`, {
     method: 'POST',
+    headers: authHeaders(),
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
@@ -127,7 +154,9 @@ export async function inspectProject(projectId) {
 }
 
 export async function fetchProjectCapabilities(projectId) {
-  const res = await fetch(`${BASE_URL}/projects/${projectId}/capabilities`);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/capabilities`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to fetch capabilities: ${res.statusText}`);
   return res.json();
 }
@@ -135,6 +164,7 @@ export async function fetchProjectCapabilities(projectId) {
 export async function deleteProject(projectId) {
   const res = await fetch(`${BASE_URL}/projects/${projectId}`, {
     method: 'DELETE',
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to delete project: ${res.statusText}`);
   return res.json();
@@ -145,6 +175,7 @@ export async function deleteProject(projectId) {
 export async function assessCompatibility(projectId) {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/compatibility/assess`, {
     method: 'POST',
+    headers: authHeaders(),
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
@@ -154,7 +185,9 @@ export async function assessCompatibility(projectId) {
 }
 
 export async function fetchCompatibilityReport(projectId) {
-  const res = await fetch(`${BASE_URL}/projects/${projectId}/compatibility`);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/compatibility`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     if (res.status === 404) return null;
     const errorData = await res.json().catch(() => ({}));
@@ -168,7 +201,7 @@ export async function fetchCompatibilityReport(projectId) {
 export async function runAudit(projectId, requirementsText, acceptanceCriteria = '', autoDetectSpec = false) {
   const res = await fetch(`${BASE_URL}/projects/${projectId}/audit`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       requirements_text: requirementsText,
       acceptance_criteria: acceptanceCriteria,
@@ -191,6 +224,7 @@ export async function runAuditWithFile(projectId, file, acceptanceCriteria = '')
 
   const res = await fetch(`${BASE_URL}/projects/${projectId}/audit/file`, {
     method: 'POST',
+    headers: authHeaders(),
     body: formData,
   });
   if (!res.ok) {
@@ -201,7 +235,9 @@ export async function runAuditWithFile(projectId, file, acceptanceCriteria = '')
 }
 
 export async function fetchAuditReport(projectId) {
-  const res = await fetch(`${BASE_URL}/projects/${projectId}/audit`);
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/audit`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     if (res.status === 404) return null;
     const errorData = await res.json().catch(() => ({}));
@@ -213,7 +249,9 @@ export async function fetchAuditReport(projectId) {
 /* ================= Feature 4: Impact Radar APIs ================= */
 
 export async function fetchRadarTopology(windowSeconds = 600) {
-  const res = await fetch(`${BASE_URL}/radar/topology?window_seconds=${windowSeconds}`);
+  const res = await fetch(`${BASE_URL}/radar/topology?window_seconds=${windowSeconds}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Failed to fetch service topology');
@@ -224,7 +262,7 @@ export async function fetchRadarTopology(windowSeconds = 600) {
 export async function analyzeRadarImpact(suspectedComponent, windowSeconds = 600) {
   const res = await fetch(`${BASE_URL}/radar/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       suspected_component: suspectedComponent,
       window_seconds: windowSeconds,
@@ -240,7 +278,9 @@ export async function analyzeRadarImpact(suspectedComponent, windowSeconds = 600
 /* ================= Feature 5: Controlled Fix Validation APIs ================= */
 
 export async function fetchValidationScenarios() {
-  const res = await fetch(`${BASE_URL}/validation/scenarios`);
+  const res = await fetch(`${BASE_URL}/validation/scenarios`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Failed to fetch validation scenarios');
@@ -251,7 +291,7 @@ export async function fetchValidationScenarios() {
 export async function runValidationBaseline(scenarioId, workloadCount = 5) {
   const res = await fetch(`${BASE_URL}/validation/baseline`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       scenario_id: scenarioId,
       workload_count: workloadCount,
@@ -267,7 +307,7 @@ export async function runValidationBaseline(scenarioId, workloadCount = 5) {
 export async function runValidationFix(experimentId, fixId, approved, workloadCount = 5) {
   const res = await fetch(`${BASE_URL}/validation/run`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       experiment_id: experimentId,
       fix_id: fixId,
@@ -283,12 +323,12 @@ export async function runValidationFix(experimentId, fixId, approved, workloadCo
 }
 
 export async function fetchValidationHistory() {
-  const res = await fetch(`${BASE_URL}/validation/history`);
+  const res = await fetch(`${BASE_URL}/validation/history`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Failed to fetch validation history');
   }
   return res.json();
 }
-
-

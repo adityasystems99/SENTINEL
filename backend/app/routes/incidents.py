@@ -2,13 +2,16 @@
 import time
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from ..config import settings
 from ..models.incident import IncidentReport, IncidentSummary
 from ..graph.builder import build_incident_graph
 from ..graph.ranker import rank_root_causes
 from ..storage.memory_store import store
 from ..services.rag import synthesize_investigation
+from ..auth.security import UserContext, get_current_user
+from ..auth.rate_limiter import check_rate_limit
 
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
@@ -18,8 +21,12 @@ class AnalyzeRequest(BaseModel):
     trace_id: Optional[str] = None
     title: Optional[str] = None
 
-@router.post("/analyze", response_model=IncidentReport)
-async def analyze_incident(req: AnalyzeRequest):
+@router.post(
+    "/analyze",
+    response_model=IncidentReport,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="analyze"))],
+)
+async def analyze_incident(req: AnalyzeRequest, current_user: UserContext = Depends(get_current_user)):
     """Trigger incident graph construction and root-cause ranking over recent telemetry."""
     # Gather candidate events
     if req.trace_id:
@@ -97,7 +104,7 @@ async def analyze_incident(req: AnalyzeRequest):
 
 
 @router.get("", response_model=List[IncidentSummary])
-async def list_incidents():
+async def list_incidents(current_user: UserContext = Depends(get_current_user)):
     """List all analyzed incidents."""
     incidents = store.list_incidents()
     summaries = []
@@ -117,7 +124,7 @@ async def list_incidents():
     return summaries
 
 @router.get("/{incident_id}", response_model=IncidentReport)
-async def get_incident(incident_id: str):
+async def get_incident(incident_id: str, current_user: UserContext = Depends(get_current_user)):
     """Retrieve complete incident report with graph nodes, edges, and root cause ranking."""
     inc = store.get_incident(incident_id)
     if not inc:

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from .config import settings
 from .routes import (
     telemetry_router,
@@ -30,14 +31,34 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for local frontend communication
+# Secure CORS middleware: never allow credentials if origin is wildcard
+has_wildcard = "*" in settings.cors_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_credentials=not has_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global unhandled exception handler: sanitize error details in production
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if not settings.debug:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An internal server error occurred.",
+                "status": 500,
+            },
+        )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "status": 500,
+        },
+    )
 
 # Include API routers under /api
 app.include_router(health_router, prefix=settings.api_prefix)
@@ -48,7 +69,6 @@ app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(radar_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
 app.include_router(rag_router, prefix=settings.api_prefix)
-
 
 
 @app.get("/")
