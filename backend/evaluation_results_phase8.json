@@ -1,6 +1,6 @@
 {
   "evaluation_name": "SENTINEL Phase 8 Real-World Incident Evaluation",
-  "timestamp": 1792247416.2989843,
+  "timestamp": 1792248077.2629364,
   "total_scenarios_evaluated": 4,
   "summary_metrics": {
     "baseline_error_count_top1_accuracy": 0.75,

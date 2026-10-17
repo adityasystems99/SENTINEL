@@ -36,6 +36,23 @@ async def ingest_single_event(event: TelemetryEvent):
         deduplicated=deduplicated,
     )
 
+@router.post("/otlp/v1/traces")
+async def ingest_otlp_traces(payload: dict):
+    """OpenTelemetry standard OTLP/HTTP trace receiver endpoint compatible with OTLPSpanExporter."""
+    from ..services.otlp_adapter import convert_otlp_traces_payload
+    events = convert_otlp_traces_payload(payload)
+    if not events:
+        return {"partialSuccess": {"rejectedSpans": 0, "errorMessage": "No valid spans parsed from OTLP payload"}}
+
+    accepted, deduplicated = store.add_events(events)
+    return {
+        "status": "success",
+        "spans_received": len(events),
+        "spans_accepted": accepted,
+        "spans_deduplicated": deduplicated,
+        "partialSuccess": {}
+    }
+
 @router.get("/events", response_model=List[TelemetryEvent])
 async def get_events(
     service: Optional[str] = Query(None, description="Filter by service name"),

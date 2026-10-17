@@ -1,0 +1,65 @@
+{
+  "evaluation_name": "SENTINEL Phase 10 External Telemetry & Unfamiliar Failure Evaluation",
+  "timestamp": 1792248077.199829,
+  "unfamiliar_scenarios_evaluated": 2,
+  "summary_metrics": {
+    "unfamiliar_dns_failure_baseline_correct": false,
+    "unfamiliar_dns_failure_sentinel_top1_correct": true,
+    "unfamiliar_dns_failure_confidence": "HIGH",
+    "incomplete_spans_uncertainty_honestly_reported": true,
+    "missing_telemetry_disclosure_verified": true
+  },
+  "detailed_scenarios": [
+    {
+      "scenario_id": "dns_nxdomain_resolution_failure",
+      "title": "Internal Service Discovery DNS Resolution Failure (CoreDNS Partition)",
+      "is_unfamiliar": true,
+      "is_incomplete": false,
+      "ground_truth_root_cause": "order-service",
+      "telemetry_events_ingested": 16,
+      "baseline_top_1": "web-gateway",
+      "baseline_correct": false,
+      "sentinel_top_1": "order-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [order-service]"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ],
+      "top_rag_doc_id": "INC-2025-1104",
+      "top_rag_score": 0.3797
+    },
+    {
+      "scenario_id": "incomplete_telemetry_missing_spans",
+      "title": "Unfamiliar Incident with Incomplete / Dropped Telemetry Spans",
+      "is_unfamiliar": true,
+      "is_incomplete": true,
+      "ground_truth_root_cause": "billing-worker",
+      "telemetry_events_ingested": 2,
+      "baseline_top_1": "billing-worker",
+      "baseline_correct": true,
+      "sentinel_top_1": "billing-worker",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "LOW",
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [billing-worker]",
+        "Speculative correlation without trace hierarchy (inconclusive evidence)"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ],
+      "top_rag_doc_id": null,
+      "top_rag_score": 0.0
+    }
+  ]
+}
