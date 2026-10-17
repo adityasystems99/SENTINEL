@@ -46,10 +46,16 @@ rate_limiter = InMemoryRateLimiter()
 def get_client_ip(request: Request) -> str:
     """Safely obtain client IP address without blindly trusting spoofed headers."""
     if settings.behind_trusted_proxy:
+        real_ip = request.headers.get("x-real-ip") or request.headers.get("cf-connecting-ip")
+        if real_ip:
+            return real_ip.strip()
+
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            # Client IP is the first address in standard X-Forwarded-For chain
-            return forwarded.split(",")[0].strip()
+            # When behind a trusted proxy, taking the rightmost non-internal entry avoids client spoofing
+            hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+            if hops:
+                return hops[-1]
 
     if request.client and request.client.host:
         return request.client.host

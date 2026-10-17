@@ -19,7 +19,7 @@ router = APIRouter(prefix="/telemetry", tags=["Telemetry"])
     response_model=IngestResponse,
     dependencies=[Depends(check_rate_limit(max_requests=settings.rate_limit_per_minute, route_scope="telemetry"))],
 )
-async def ingest_telemetry(payload: IngestBatchRequest):
+async def ingest_telemetry(payload: IngestBatchRequest, current_user: UserContext = Depends(get_current_user)):
     """Ingest a batch of telemetry events with automatic deduplication and batch size bounds."""
     if not payload.events:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Batch cannot be empty")
@@ -43,7 +43,7 @@ async def ingest_telemetry(payload: IngestBatchRequest):
     response_model=IngestResponse,
     dependencies=[Depends(check_rate_limit(max_requests=settings.rate_limit_per_minute, route_scope="telemetry"))],
 )
-async def ingest_single_event(event: TelemetryEvent):
+async def ingest_single_event(event: TelemetryEvent, current_user: UserContext = Depends(get_current_user)):
     """Ingest a single telemetry event."""
     accepted, deduplicated = store.add_events([event])
     return IngestResponse(
@@ -57,7 +57,7 @@ async def ingest_single_event(event: TelemetryEvent):
     "/otlp/v1/traces",
     dependencies=[Depends(check_rate_limit(max_requests=settings.rate_limit_per_minute, route_scope="otlp"))],
 )
-async def ingest_otlp_traces(payload: dict):
+async def ingest_otlp_traces(payload: dict, current_user: UserContext = Depends(get_current_user)):
     """OpenTelemetry standard OTLP/HTTP trace receiver endpoint compatible with OTLPSpanExporter."""
     if not isinstance(payload, dict):
         raise HTTPException(
@@ -92,6 +92,7 @@ async def get_events(
     level: Optional[LogLevel] = Query(None, description="Filter by log level"),
     trace_id: Optional[str] = Query(None, description="Filter by trace ID"),
     limit: int = Query(100, ge=1, le=500, description="Max events to return"),
+    current_user: UserContext = Depends(get_current_user),
 ):
     """Query ingested telemetry events with optional filters."""
     return store.get_events(service=service, level=level, trace_id=trace_id, limit=limit)

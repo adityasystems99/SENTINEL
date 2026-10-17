@@ -45,6 +45,7 @@ class IncidentReport(BaseModel):
     summary: str
     recommended_actions: List[str] = Field(default_factory=list)
     historical_intelligence: Optional[Any] = None
+    owner_id: str = "demo_user"
 
 
 class IncidentSummary(BaseModel):
@@ -57,3 +58,4 @@ class IncidentSummary(BaseModel):
     event_count: int
     top_suspect: Optional[str] = None
     top_suspect_service: Optional[str] = None
+    owner_id: str = "demo_user"

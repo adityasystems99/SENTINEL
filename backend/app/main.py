@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from .config import settings
+from .config import settings, validate_production_configuration
 from .routes import (
     telemetry_router,
     incidents_router,
@@ -17,7 +17,8 @@ from .services.rag import initialize_knowledge_base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for startup indexing and graceful shutdown."""
+    """Lifespan context manager for startup validation, indexing, and graceful shutdown."""
+    validate_production_configuration()
     try:
         initialize_knowledge_base()
     except Exception as e:
@@ -30,6 +31,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.environment.lower() == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # Secure CORS middleware: never allow credentials if origin is wildcard
 has_wildcard = "*" in settings.cors_origins

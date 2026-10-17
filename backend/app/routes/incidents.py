@@ -97,6 +97,7 @@ async def analyze_incident(req: AnalyzeRequest, current_user: UserContext = Depe
         summary=summary,
         recommended_actions=recommended_actions,
         historical_intelligence=historical_intelligence,
+        owner_id=current_user.user_id,
     )
 
     store.save_incident(report)
@@ -105,10 +106,12 @@ async def analyze_incident(req: AnalyzeRequest, current_user: UserContext = Depe
 
 @router.get("", response_model=List[IncidentSummary])
 async def list_incidents(current_user: UserContext = Depends(get_current_user)):
-    """List all analyzed incidents."""
+    """List analyzed incidents scoped to the authenticated user."""
     incidents = store.list_incidents()
     summaries = []
     for inc in reversed(incidents):
+        if current_user.role != "admin" and getattr(inc, "owner_id", "demo_user") != current_user.user_id:
+            continue
         top_cand = inc.root_cause_ranking[0] if inc.root_cause_ranking else None
         summaries.append(IncidentSummary(
             incident_id=inc.incident_id,
@@ -120,13 +123,16 @@ async def list_incidents(current_user: UserContext = Depends(get_current_user)):
             event_count=inc.event_count,
             top_suspect=top_cand.message[:60] if top_cand else None,
             top_suspect_service=top_cand.service if top_cand else None,
+            owner_id=getattr(inc, "owner_id", "demo_user"),
         ))
     return summaries
 
 @router.get("/{incident_id}", response_model=IncidentReport)
 async def get_incident(incident_id: str, current_user: UserContext = Depends(get_current_user)):
-    """Retrieve complete incident report with graph nodes, edges, and root cause ranking."""
+    """Retrieve complete incident report with ownership verification."""
     inc = store.get_incident(incident_id)
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident {incident_id} not found")
+    if current_user.role != "admin" and getattr(inc, "owner_id", "demo_user") != current_user.user_id:
+        raise HTTPException(status_code=403, detail=f"Forbidden: You do not have permission to access incident '{incident_id}'.")
     return inc

@@ -23,6 +23,7 @@ class Settings(BaseModel):
 
     # Authentication & Multi-Tenant Isolation
     auth_enabled: bool = os.getenv("SENTINEL_AUTH_ENABLED", "false").lower() in ("true", "1")
+    secret_key: str = os.getenv("SENTINEL_SECRET_KEY", "sentinel-insecure-default-signing-key-change-in-prod")
     api_key: str = os.getenv("SENTINEL_API_KEY", "demo-sentinel-key-2026")
     admin_api_key: str = os.getenv("SENTINEL_ADMIN_API_KEY", "admin-sentinel-key-2026")
 
@@ -64,4 +65,24 @@ class Settings(BaseModel):
     ]
 
 settings = Settings()
+
+def validate_production_configuration() -> None:
+    """Validate environment settings at startup to prevent running insecure production deployments."""
+    if settings.environment.lower() == "production":
+        errors = []
+        if not settings.auth_enabled:
+            errors.append("SENTINEL_AUTH_ENABLED must be 'true' in production.")
+        if settings.secret_key == "sentinel-insecure-default-signing-key-change-in-prod":
+            errors.append("SENTINEL_SECRET_KEY must be configured with a secure random key in production.")
+        if settings.api_key == "demo-sentinel-key-2026":
+            errors.append("SENTINEL_API_KEY must be changed from the default demo key in production.")
+        if settings.admin_api_key == "admin-sentinel-key-2026":
+            errors.append("SENTINEL_ADMIN_API_KEY must be changed from the default admin key in production.")
+        if any("localhost" in origin or "127.0.0.1" in origin for origin in settings.cors_origins):
+            errors.append("SENTINEL_CORS_ORIGINS must not contain localhost or 127.0.0.1 in production.")
+        if "*" in settings.cors_origins:
+            errors.append("SENTINEL_CORS_ORIGINS must not contain wildcard '*' in production.")
+        if errors:
+            raise RuntimeError("Production security validation failed:\n - " + "\n - ".join(errors))
+
 

@@ -3,14 +3,54 @@
  * Provides token authentication, configurable base URL, and consistent error handling.
  */
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-const API_KEY = import.meta.env.VITE_SENTINEL_API_KEY || 'demo-sentinel-key-2026';
+
+/**
+ * Retrieve current client authentication token without embedding secrets into production bundles.
+ * Checks runtime session storage first, then URL query parameter, and falls back to dev-only env.
+ */
+export function getAuthToken() {
+  if (typeof window !== 'undefined') {
+    // 1. Session storage (set at runtime after user provides token)
+    const sessionToken = window.sessionStorage?.getItem('sentinel_token');
+    if (sessionToken) return sessionToken;
+
+    // 2. Query param for private demo links (?token=...)
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryToken = urlParams.get('token') || urlParams.get('key');
+      if (queryToken) {
+        window.sessionStorage?.setItem('sentinel_token', queryToken);
+        return queryToken;
+      }
+    } catch (_) {}
+  }
+
+  // 3. In Vite development mode only (tree-shaken out in production build)
+  if (import.meta.env.DEV) {
+    return import.meta.env.VITE_SENTINEL_API_KEY || 'demo-sentinel-key-2026';
+  }
+
+  return null;
+}
+
+export function setAuthToken(token) {
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    if (token) {
+      window.sessionStorage.setItem('sentinel_token', token);
+    } else {
+      window.sessionStorage.removeItem('sentinel_token');
+    }
+  }
+}
 
 function authHeaders(extraHeaders = {}) {
-  return {
-    'Authorization': `Bearer ${API_KEY}`,
-    'X-API-Key': API_KEY,
-    ...extraHeaders,
-  };
+  const token = getAuthToken();
+  const headers = { ...extraHeaders };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-API-Key'] = token;
+  }
+  return headers;
 }
 
 export async function fetchHealth() {
@@ -96,8 +136,11 @@ export async function uploadProjectArchive(file, name, onProgress) {
     }
 
     xhr.open('POST', `${BASE_URL}/projects/upload`);
-    xhr.setRequestHeader('Authorization', `Bearer ${API_KEY}`);
-    xhr.setRequestHeader('X-API-Key', API_KEY);
+    const token = getAuthToken();
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('X-API-Key', token);
+    }
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {

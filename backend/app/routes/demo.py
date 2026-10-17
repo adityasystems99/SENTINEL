@@ -1,6 +1,7 @@
 """Demo failure injection routes for interactive demonstration."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from ..storage.memory_store import store
+from ..auth.security import UserContext, get_current_user
 from demo_app.service import DemoAppService
 from demo_app.scenarios import (
     inject_db_pool_exhaustion,
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/demo", tags=["Demo"])
 demo_svc = DemoAppService(telemetry_sink=lambda events: store.add_events(events))
 
 @router.post("/scenario/{scenario_name}")
-async def trigger_scenario(scenario_name: str, count: int = 3):
+async def trigger_scenario(scenario_name: str, count: int = 3, current_user: UserContext = Depends(get_current_user)):
     """Trigger a failure-injection or traffic scenario."""
     if scenario_name == "db_pool_exhaustion":
         inject_db_pool_exhaustion(demo_svc, count=count)

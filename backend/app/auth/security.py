@@ -1,4 +1,9 @@
-"""Server-enforced authentication, authorization, and workspace isolation."""
+"""Server-enforced authentication, authorization, and workspace isolation.
+Cryptographically signs and validates user identity to eliminate user impersonation.
+"""
+import hashlib
+import hmac
+import time
 from typing import Optional
 from fastapi import Header, HTTPException, status
 from pydantic import BaseModel
@@ -11,21 +16,57 @@ class UserContext(BaseModel):
     role: str = "user"  # "user" | "admin"
 
 
+def create_signed_token(user_id: str, role: str = "user", ttl_seconds: int = 86400) -> str:
+    """Create a tamper-proof cryptographically signed access token.
+    Format: <user_id>.<role>.<expiry_timestamp>.<hmac_signature>
+    """
+    clean_user = user_id.strip()
+    clean_role = role.strip()
+    expiry = int(time.time()) + ttl_seconds
+    payload = f"{clean_user}:{clean_role}:{expiry}"
+    sig = hmac.new(settings.secret_key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def verify_signed_token(token: str) -> Optional[UserContext]:
+    """Validate a cryptographically signed access token.
+    Returns UserContext if signature is valid and token is unexpired; None otherwise.
+    """
+    parts = token.split(":")
+    if len(parts) != 4:
+        return None
+
+    user_id, role, expiry_str, provided_sig = parts
+    try:
+        expiry = int(expiry_str)
+    except ValueError:
+        return None
+
+    if time.time() > expiry:
+        return None
+
+    payload = f"{user_id}:{role}:{expiry}"
+    expected_sig = hmac.new(settings.secret_key.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(provided_sig, expected_sig):
+        return None
+
+    if role not in ("user", "admin"):
+        return None
+
+    return UserContext(user_id=user_id, role=role)
+
+
 async def get_current_user(
     authorization: Optional[str] = Header(None, alias="Authorization"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ) -> UserContext:
     """Validate incoming client credentials and resolve to authenticated UserContext.
     
+    Rejects any unverified, forged, or spoofed identity claims.
     Supports:
-    - Authorization: Bearer <token>
-    - X-API-Key: <token>
-    
-    Supported tokens:
-    - settings.admin_api_key -> admin role
-    - settings.api_key -> user role (demo_user)
-    - admin:<username> -> admin role
-    - user:<username> -> user role (allows scoped multi-user tenant testing)
+    - Authorization: Bearer <signed_token | api_key>
+    - X-API-Key: <api_key>
     """
     token: Optional[str] = None
     if authorization:
@@ -45,26 +86,22 @@ async def get_current_user(
                 detail="Authentication credentials required. Supply 'Authorization: Bearer <token>' or 'X-API-Key' header.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        # Development / permissive mode without auth header
+        # Permissive development mode without auth header
         return UserContext(user_id="demo_user", role="user")
 
-    # Validate provided credentials
+    # 1. Validate against configured pre-shared server keys
     if token == settings.admin_api_key:
         return UserContext(user_id="admin_user", role="admin")
 
     if token == settings.api_key:
         return UserContext(user_id="demo_user", role="user")
 
-    if token.startswith("admin:"):
-        admin_id = token[6:].strip()
-        if admin_id:
-            return UserContext(user_id=admin_id, role="admin")
+    # 2. Validate against server-signed cryptographic token
+    signed_user = verify_signed_token(token)
+    if signed_user:
+        return signed_user
 
-    if token.startswith("user:"):
-        user_id = token[5:].strip()
-        if user_id:
-            return UserContext(user_id=user_id, role="user")
-
+    # 3. Reject invalid / forged credentials
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid authentication credentials.",
