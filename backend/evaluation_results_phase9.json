@@ -1,0 +1,229 @@
+{
+  "evaluation_name": "SENTINEL Phase 9 Independent & Distributed Evaluation",
+  "timestamp": 1792247416.3540556,
+  "total_scenarios": 8,
+  "deterministic_scenarios_count": 7,
+  "held_out_scenarios_count": 3,
+  "summary_metrics": {
+    "baseline_top1_accuracy": "85.7% (6/7)",
+    "sentinel_top1_accuracy": "100.0% (7/7)",
+    "sentinel_top3_accuracy": "100.0% (7/7)",
+    "held_out_sentinel_top1_accuracy": "100.0% (3/3)",
+    "held_out_baseline_top1_accuracy": "100.0% (3/3)",
+    "inconclusive_scenario_handled_honestly": true,
+    "historical_rag_hit1_accuracy": "80.0% (4/5)",
+    "distractor_ddos_noise_rejected": true
+  },
+  "detailed_scenarios": [
+    {
+      "scenario_id": "db_pool_exhaustion_saturation",
+      "title": "Database Connection Pool Saturation (HikariCP maxPoolSize=10)",
+      "held_out": false,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "inventory-service",
+      "telemetry_events_ingested": 15,
+      "baseline_top_1": "inventory-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "inventory-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2025-0812",
+      "top_rag_similarity": 0.8468,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [inventory-service]"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "downstream_timeout_gateway_cutoff",
+      "title": "Downstream Gateway Cutoff Timeout (Stripe 5000ms freeze)",
+      "held_out": false,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "payment-service",
+      "telemetry_events_ingested": 12,
+      "baseline_top_1": "payment-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "payment-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "LOW",
+      "top_rag_doc_id": "INC-2026-0115",
+      "top_rag_similarity": 0.5783,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "High outbound blast radius (2 downstream nodes)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [payment-service]",
+        "Speculative correlation without trace hierarchy (inconclusive evidence)"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "bad_auth_deployment_nullpointer",
+      "title": "Faulty Auth Service Release Deployment (v2.4.1-rc1)",
+      "held_out": false,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "auth-service",
+      "telemetry_events_ingested": 10,
+      "baseline_top_1": "auth-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "auth-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "RUNBOOK-AUTH-002",
+      "top_rag_similarity": 0.7502,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 6 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Code deployment event on [auth-service] immediately preceding failures"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "misleading_gateway_flood",
+      "title": "Downstream Symptom Flood vs Single Upstream Trigger",
+      "held_out": false,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "order-service",
+      "telemetry_events_ingested": 21,
+      "baseline_top_1": "web-gateway",
+      "baseline_correct": false,
+      "sentinel_top_1": "order-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2025-0812",
+      "top_rag_similarity": 0.3017,
+      "rag_relevant_match": null,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [order-service]"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "db_pool_leak_unreleased",
+      "title": "Database Connection Leak via Unclosed Transaction",
+      "held_out": true,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "order-service",
+      "telemetry_events_ingested": 9,
+      "baseline_top_1": "order-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "order-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "RUNBOOK-INV-001",
+      "top_rag_similarity": 0.4004,
+      "rag_relevant_match": null,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [order-service]"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "downstream_timeout_intermittent_3rdparty",
+      "title": "Intermittent Socket Timeout on External Payment Provider",
+      "held_out": true,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "payment-service",
+      "telemetry_events_ingested": 9,
+      "baseline_top_1": "payment-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "payment-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2026-0115",
+      "top_rag_similarity": 0.64,
+      "rag_relevant_match": true,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [payment-service]"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "config_drift_bad_port",
+      "title": "Configuration Drift (Invalid DB Port 5433 after config push)",
+      "held_out": true,
+      "is_inconclusive": false,
+      "ground_truth_root_cause": "inventory-service",
+      "telemetry_events_ingested": 10,
+      "baseline_top_1": "inventory-service",
+      "baseline_correct": true,
+      "sentinel_top_1": "inventory-service",
+      "sentinel_top_1_correct": true,
+      "sentinel_top_3_correct": true,
+      "sentinel_confidence": "HIGH",
+      "top_rag_doc_id": "INC-2025-0812",
+      "top_rag_similarity": 0.4506,
+      "rag_relevant_match": false,
+      "supporting_evidence": [
+        "Root source in causal chain with 6 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Code deployment event on [inventory-service] immediately preceding failures"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    },
+    {
+      "scenario_id": "inconclusive_disconnected_signals",
+      "title": "Ambiguous Incident with Insufficient Evidence & Disconnected Logs",
+      "held_out": true,
+      "is_inconclusive": true,
+      "ground_truth_root_cause": null,
+      "telemetry_events_ingested": 2,
+      "baseline_top_1": "auth-service",
+      "baseline_correct": false,
+      "sentinel_top_1": "auth-service",
+      "sentinel_top_1_correct": null,
+      "sentinel_top_3_correct": null,
+      "sentinel_confidence": "LOW",
+      "top_rag_doc_id": "RUNBOOK-AUTH-002",
+      "top_rag_similarity": 0.4826,
+      "rag_relevant_match": null,
+      "supporting_evidence": [
+        "Root source in causal chain with 1 downstream impact(s)",
+        "Occurred in initial trigger window of the incident",
+        "Direct error/exception on [auth-service]",
+        "Speculative correlation without trace hierarchy (inconclusive evidence)"
+      ],
+      "uncertainty_disclosures": [
+        "Historical similarity does NOT prove causation. Identical symptoms (such as connection timeouts or 500 errors) can arise from distinct infrastructure failures.",
+        "External infrastructure metrics (database host CPU, network NIC saturation, cloud provider status) are not directly captured in local telemetry spans."
+      ]
+    }
+  ]
+}

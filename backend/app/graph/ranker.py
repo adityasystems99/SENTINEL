@@ -107,7 +107,26 @@ def rank_root_causes(G: nx.DiGraph, nodes: List[GraphNode]) -> List[RootCauseCan
         n = node_dict[nid]
         normalized_score = min(1.0, max(0.05, round(raw_score / max_score, 3)))
         
-        if normalized_score >= 0.75:
+        in_deg = G.in_degree(nid)
+        out_deg = G.out_degree(nid)
+        out_edges = G.out_edges(nid, data=True)
+        verified_causal_edges = [
+            (u, v, d) for u, v, d in out_edges
+            if d.get("relation") in ("causes_failure_in", "deployed_before_error")
+        ]
+        has_causal_edge = len(verified_causal_edges) > 0
+        has_deployment = (n.event_type == "deployment")
+        is_isolated = (in_deg == 0 and out_deg == 0)
+        has_only_temporal_fallback = (out_deg > 0 and len(verified_causal_edges) == 0 and not has_deployment)
+
+        if (is_isolated or has_only_temporal_fallback) and not has_deployment:
+            # Isolated node or weak temporal fallback without trace linkage is inherently low confidence
+            confidence = "LOW"
+            reasons.append("Speculative correlation without trace hierarchy (inconclusive evidence)")
+        elif not has_causal_edge and not has_deployment and normalized_score >= 0.75:
+            # Without causal fan-out or deployment evidence, cap confidence at MEDIUM
+            confidence = "MEDIUM"
+        elif normalized_score >= 0.75:
             confidence = "HIGH"
         elif normalized_score >= 0.45:
             confidence = "MEDIUM"

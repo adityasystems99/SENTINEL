@@ -1,6 +1,6 @@
 {
   "evaluation_name": "SENTINEL Phase 8 Real-World Incident Evaluation",
-  "timestamp": 1792241750.2426112,
+  "timestamp": 1792247416.2989843,
   "total_scenarios_evaluated": 4,
   "summary_metrics": {
     "baseline_error_count_top1_accuracy": 0.75,
@@ -80,8 +80,8 @@
       "sentinel_top_1_correct": true,
       "sentinel_top_3_correct": true,
       "sentinel_confidence": "HIGH",
-      "top_rag_doc_id": null,
-      "top_rag_similarity": 0.0,
+      "top_rag_doc_id": "INC-2024-0410",
+      "top_rag_similarity": 0.2778,
       "rag_relevant_match": false,
       "noise_properly_rejected": true,
       "supporting_evidence": [
