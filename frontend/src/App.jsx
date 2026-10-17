@@ -1,14 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
+import ProjectWorkspaceBar from './components/ProjectWorkspaceBar';
 import DemoControls from './components/DemoControls';
 import IncidentList from './components/IncidentList';
 import RootCauseCard from './components/RootCauseCard';
 import IncidentGraph from './components/IncidentGraph';
 import Timeline from './components/Timeline';
-import { fetchHealth, fetchIncidents, fetchIncidentDetail, triggerIncidentAnalysis } from './api/client';
+import {
+  fetchHealth,
+  fetchIncidents,
+  fetchIncidentDetail,
+  triggerIncidentAnalysis,
+  fetchProjects,
+  fetchProjectMetadata,
+} from './api/client';
 
 export default function App() {
   const [health, setHealth] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [activeProjectId, setActiveProjectId] = useState(null);
+  const [activeProject, setActiveProject] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState(null);
   const [selectedIncident, setSelectedIncident] = useState(null);
@@ -18,12 +29,25 @@ export default function App() {
   const loadData = useCallback(async () => {
     try {
       setIsRefreshing(true);
-      const [hData, incData] = await Promise.all([
+      const [hData, incData, projList] = await Promise.all([
         fetchHealth().catch(() => null),
         fetchIncidents().catch(() => []),
+        fetchProjects().catch(() => []),
       ]);
       setHealth(hData);
       setIncidents(incData || []);
+      setProjects(projList || []);
+
+      // If active project is selected, refresh its metadata
+      if (projList && projList.length > 0) {
+        const currentId = activeProjectId || projList[0].project_id;
+        setActiveProjectId(currentId);
+        const meta = await fetchProjectMetadata(currentId).catch(() => null);
+        setActiveProject(meta);
+      } else {
+        setActiveProject(null);
+        setActiveProjectId(null);
+      }
 
       // If no incident selected or selected not in list, auto-select latest
       if (incData && incData.length > 0) {
@@ -40,7 +64,22 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [selectedIncidentId]);
+  }, [selectedIncidentId, activeProjectId]);
+
+  const handleSelectProject = async (id) => {
+    setActiveProjectId(id);
+    try {
+      const meta = await fetchProjectMetadata(id);
+      setActiveProject(meta);
+    } catch (err) {
+      console.error('Error fetching project detail:', err);
+    }
+  };
+
+  const handleProjectUploaded = async (newProjectId) => {
+    setActiveProjectId(newProjectId);
+    await loadData();
+  };
 
   const handleSelectIncident = async (id) => {
     setSelectedIncidentId(id);
@@ -84,6 +123,15 @@ export default function App() {
         activeIncidentCount={incidents.length}
       />
 
+      {/* Project Ingestion & Workspaces Bar */}
+      <ProjectWorkspaceBar
+        projects={projects}
+        activeProject={activeProject}
+        onSelectProject={handleSelectProject}
+        onProjectUploaded={handleProjectUploaded}
+      />
+
+      {/* Telemetry & Chaos Harness */}
       <DemoControls onActionComplete={loadData} />
 
       <main style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '24px', alignItems: 'start' }}>

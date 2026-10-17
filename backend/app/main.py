@@ -2,11 +2,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .routes import telemetry_router, incidents_router, health_router, demo_router
+from .routes import (
+    telemetry_router,
+    incidents_router,
+    health_router,
+    demo_router,
+    projects_router,
+)
 
 app = FastAPI(
     title=settings.app_name,
-    description="AI-powered developer intelligence platform for incident correlation, root-cause ranking, and telemetry ingestion.",
+    description="AI-powered developer intelligence platform for project ingestion, incident correlation, root-cause ranking, and telemetry ingestion.",
     version="1.0.0",
 )
 
@@ -24,6 +30,7 @@ app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(telemetry_router, prefix=settings.api_prefix)
 app.include_router(incidents_router, prefix=settings.api_prefix)
 app.include_router(demo_router, prefix=settings.api_prefix)
+app.include_router(projects_router, prefix=settings.api_prefix)
 
 @app.get("/")
 async def root():

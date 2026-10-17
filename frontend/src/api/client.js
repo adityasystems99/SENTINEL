@@ -56,3 +56,59 @@ export async function clearAllData() {
   if (!res.ok) throw new Error(`Failed to reset telemetry: ${res.statusText}`);
   return res.json();
 }
+
+/* ================= Project Ingestion & Workspace APIs ================= */
+
+export async function uploadProjectArchive(file, name) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (name) formData.append('name', name);
+
+  const res = await fetch(`${BASE_URL}/projects/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Upload failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchProjects() {
+  const res = await fetch(`${BASE_URL}/projects`);
+  if (!res.ok) throw new Error(`Failed to list projects: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchProjectMetadata(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}`);
+  if (!res.ok) throw new Error(`Failed to get project: ${res.statusText}`);
+  return res.json();
+}
+
+export async function inspectProject(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/inspect`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Inspection failed');
+  }
+  return res.json();
+}
+
+export async function fetchProjectCapabilities(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}/capabilities`);
+  if (!res.ok) throw new Error(`Failed to fetch capabilities: ${res.statusText}`);
+  return res.json();
+}
+
+export async function deleteProject(projectId) {
+  const res = await fetch(`${BASE_URL}/projects/${projectId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Failed to delete project: ${res.statusText}`);
+  return res.json();
+}
