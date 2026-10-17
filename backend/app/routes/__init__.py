@@ -5,6 +5,7 @@ from .demo import router as demo_router
 from .projects import router as projects_router
 from .radar import router as radar_router
 from .validation import router as validation_router
+from .rag import router as rag_router
 
 __all__ = [
     "telemetry_router",
@@ -14,5 +15,7 @@ __all__ = [
     "projects_router",
     "radar_router",
     "validation_router",
+    "rag_router",
 ]
+
 

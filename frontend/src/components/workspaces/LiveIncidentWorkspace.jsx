@@ -3,7 +3,9 @@ import { Radio, ChevronLeft, RefreshCw } from 'lucide-react';
 import DemoControls from '../DemoControls';
 import IncidentList from '../IncidentList';
 import RootCauseCard from '../RootCauseCard';
+import HistoricalIntelligencePanel from '../HistoricalIntelligencePanel';
 import IncidentGraph from '../IncidentGraph';
+
 import Timeline from '../Timeline';
 
 export default function LiveIncidentWorkspace({
@@ -119,6 +121,9 @@ export default function LiveIncidentWorkspace({
           <RootCauseCard incident={selectedIncident} />
           {selectedIncident && (
             <>
+              {selectedIncident.historical_intelligence && (
+                <HistoricalIntelligencePanel intelligence={selectedIncident.historical_intelligence} />
+              )}
               <IncidentGraph
                 nodes={selectedIncident.nodes}
                 edges={selectedIncident.edges}
@@ -127,6 +132,7 @@ export default function LiveIncidentWorkspace({
             </>
           )}
         </div>
+
       </main>
     </div>
   );

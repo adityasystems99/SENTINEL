@@ -41,6 +41,15 @@ from .validation import (
     FixValidationRequest,
     FixValidationReport,
 )
+from .rag import (
+    KnowledgeCategory,
+    KnowledgeDocument,
+    RetrievedChunk,
+    RAGQuery,
+    InvestigationSynthesis,
+    RAGIngestResult,
+)
+
 
 __all__ = [
     "TelemetryEvent",
@@ -83,5 +92,12 @@ __all__ = [
     "BaselineExperimentResult",
     "FixValidationRequest",
     "FixValidationReport",
+    "KnowledgeCategory",
+    "KnowledgeDocument",
+    "RetrievedChunk",
+    "RAGQuery",
+    "InvestigationSynthesis",
+    "RAGIngestResult",
 ]
+
 

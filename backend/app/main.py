@@ -10,13 +10,23 @@ from .routes import (
     projects_router,
     radar_router,
     validation_router,
+    rag_router,
 )
+from .services.rag import initialize_knowledge_base
 
 app = FastAPI(
     title=settings.app_name,
     description="AI-powered developer intelligence platform for project ingestion, incident correlation, root-cause ranking, and telemetry ingestion.",
     version="1.0.0",
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Auto-index version-controlled knowledge base on boot."""
+    try:
+        initialize_knowledge_base()
+    except Exception as e:
+        print(f"Warning: Failed to auto-index knowledge base on startup: {e}")
 
 # CORS middleware for local frontend communication
 app.add_middleware(
@@ -35,6 +45,8 @@ app.include_router(demo_router, prefix=settings.api_prefix)
 app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(radar_router, prefix=settings.api_prefix)
 app.include_router(validation_router, prefix=settings.api_prefix)
+app.include_router(rag_router, prefix=settings.api_prefix)
+
 
 
 @app.get("/")

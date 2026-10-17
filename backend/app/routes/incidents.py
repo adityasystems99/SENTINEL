@@ -8,6 +8,8 @@ from ..models.incident import IncidentReport, IncidentSummary
 from ..graph.builder import build_incident_graph
 from ..graph.ranker import rank_root_causes
 from ..storage.memory_store import store
+from ..services.rag import synthesize_investigation
+
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -58,11 +60,20 @@ async def analyze_incident(req: AnalyzeRequest):
     recommended_actions = []
     if top_suspect and top_suspect.event_type == "deployment":
         recommended_actions.append(f"Rollback recent deployment on service [{top_service}]")
-    if top_suspect and "timeout" in top_suspect.message.lower():
-        recommended_actions.append(f"Check connection pool / downstream latency on [{top_service}]")
     if top_suspect and "exhausted" in top_suspect.message.lower():
         recommended_actions.append(f"Restart connection pool or scale instances for [{top_service}]")
-    if not recommended_actions:
+
+    # 3. Synthesize historical RAG intelligence
+    historical_intelligence = synthesize_investigation(
+        nodes=nodes,
+        ranked_causes=ranked_causes,
+        top_k=4
+    )
+
+
+    if not recommended_actions and historical_intelligence.recommended_investigation:
+        recommended_actions.extend(historical_intelligence.recommended_investigation[:2])
+    elif not recommended_actions:
         recommended_actions.append(f"Inspect recent error stack trace on service [{top_service}]")
 
     report = IncidentReport(
@@ -78,10 +89,12 @@ async def analyze_incident(req: AnalyzeRequest):
         root_cause_ranking=ranked_causes,
         summary=summary,
         recommended_actions=recommended_actions,
+        historical_intelligence=historical_intelligence,
     )
 
     store.save_incident(report)
     return report
+
 
 @router.get("", response_model=List[IncidentSummary])
 async def list_incidents():

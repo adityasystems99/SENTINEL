@@ -44,6 +44,8 @@ class IncidentReport(BaseModel):
     root_cause_ranking: List[RootCauseCandidate]
     summary: str
     recommended_actions: List[str] = Field(default_factory=list)
+    historical_intelligence: Optional[Any] = None
+
 
 class IncidentSummary(BaseModel):
     incident_id: str
