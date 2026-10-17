@@ -210,3 +210,85 @@ export async function fetchAuditReport(projectId) {
   return res.json();
 }
 
+/* ================= Feature 4: Impact Radar APIs ================= */
+
+export async function fetchRadarTopology(windowSeconds = 600) {
+  const res = await fetch(`${BASE_URL}/radar/topology?window_seconds=${windowSeconds}`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch service topology');
+  }
+  return res.json();
+}
+
+export async function analyzeRadarImpact(suspectedComponent, windowSeconds = 600) {
+  const res = await fetch(`${BASE_URL}/radar/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      suspected_component: suspectedComponent,
+      window_seconds: windowSeconds,
+    }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to analyze impact');
+  }
+  return res.json();
+}
+
+/* ================= Feature 5: Controlled Fix Validation APIs ================= */
+
+export async function fetchValidationScenarios() {
+  const res = await fetch(`${BASE_URL}/validation/scenarios`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch validation scenarios');
+  }
+  return res.json();
+}
+
+export async function runValidationBaseline(scenarioId, workloadCount = 5) {
+  const res = await fetch(`${BASE_URL}/validation/baseline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      scenario_id: scenarioId,
+      workload_count: workloadCount,
+    }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to run baseline experiment');
+  }
+  return res.json();
+}
+
+export async function runValidationFix(experimentId, fixId, approved, workloadCount = 5) {
+  const res = await fetch(`${BASE_URL}/validation/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      experiment_id: experimentId,
+      fix_id: fixId,
+      approved: approved,
+      workload_count: workloadCount,
+    }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to run fix validation');
+  }
+  return res.json();
+}
+
+export async function fetchValidationHistory() {
+  const res = await fetch(`${BASE_URL}/validation/history`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to fetch validation history');
+  }
+  return res.json();
+}
+
+

@@ -22,6 +22,26 @@ from .audit import (
     AuditSubmissionRequest,
 )
 
+from .impact import (
+    ComponentHealthStatus,
+    DependencyRelationship,
+    ImpactedComponent,
+    ServiceTopologyEdge,
+    ServiceTopologyNode,
+    ImpactAnalysisRequest,
+    ImpactReport,
+)
+from .validation import (
+    ValidationVerdict,
+    ExperimentRunMetrics,
+    CandidateFix,
+    FailureScenarioDefinition,
+    BaselineRequest,
+    BaselineExperimentResult,
+    FixValidationRequest,
+    FixValidationReport,
+)
+
 __all__ = [
     "TelemetryEvent",
     "IngestBatchRequest",
@@ -48,4 +68,20 @@ __all__ = [
     "PrioritizedWorkItem",
     "AuditReport",
     "AuditSubmissionRequest",
+    "ComponentHealthStatus",
+    "DependencyRelationship",
+    "ImpactedComponent",
+    "ServiceTopologyEdge",
+    "ServiceTopologyNode",
+    "ImpactAnalysisRequest",
+    "ImpactReport",
+    "ValidationVerdict",
+    "ExperimentRunMetrics",
+    "CandidateFix",
+    "FailureScenarioDefinition",
+    "BaselineRequest",
+    "BaselineExperimentResult",
+    "FixValidationRequest",
+    "FixValidationReport",
 ]
+

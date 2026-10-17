@@ -8,6 +8,8 @@ from .routes import (
     health_router,
     demo_router,
     projects_router,
+    radar_router,
+    validation_router,
 )
 
 app = FastAPI(
@@ -31,6 +33,9 @@ app.include_router(telemetry_router, prefix=settings.api_prefix)
 app.include_router(incidents_router, prefix=settings.api_prefix)
 app.include_router(demo_router, prefix=settings.api_prefix)
 app.include_router(projects_router, prefix=settings.api_prefix)
+app.include_router(radar_router, prefix=settings.api_prefix)
+app.include_router(validation_router, prefix=settings.api_prefix)
+
 
 @app.get("/")
 async def root():
