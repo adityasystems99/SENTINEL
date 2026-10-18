@@ -1,5 +1,7 @@
 # SENTINEL — Developer Intelligence Platform
 
+**Repository:** [https://github.com/adityasystems99/SENTINEL](https://github.com/adityasystems99/SENTINEL)
+
 SENTINEL (Self-Investigating Production Engineer) is an autonomous developer intelligence platform designed to ingest distributed application telemetry, construct causal incident graphs using NetworkX, rank root causes of cascading failures, and provide interactive investigation dashboards.
 
 ## Architecture

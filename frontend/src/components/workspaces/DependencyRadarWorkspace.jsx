@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Share2,
   ChevronLeft,
@@ -14,16 +14,28 @@ import {
   Compass,
   Activity,
   Maximize2,
+  Search,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Sliders,
 } from 'lucide-react';
 import { fetchRadarTopology, analyzeRadarImpact } from '../../api/client';
 
 export default function DependencyRadarWorkspace({ project, onBackToDashboard }) {
   const [topology, setTopology] = useState(null);
   const [selectedService, setSelectedService] = useState('inventory-service');
+  const [hoveredNode, setHoveredNode] = useState(null);
   const [impactReport, setImpactReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
+
+  // Graph interactive controls
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'failing' | 'at_risk' | 'healthy'
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     loadTopologyAndAnalyze(selectedService);
@@ -35,7 +47,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
     try {
       const topo = await fetchRadarTopology(600);
       setTopology(topo);
-      
+
       const target = serviceName || (topo?.nodes?.[0]?.service || 'inventory-service');
       setSelectedService(target);
 
@@ -86,7 +98,16 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
         );
       default:
         return (
-          <span className="badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(167, 139, 250, 0.15)', color: '#c4b5fd' }}>
+          <span
+            className="badge"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(167, 139, 250, 0.15)',
+              color: '#c4b5fd',
+            }}
+          >
             <HelpCircle size={12} /> Unknown
           </span>
         );
@@ -102,32 +123,80 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
       case 3:
         return <span className="badge badge-medium">Priority 3 (Transitive)</span>;
       default:
-        return <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)' }}>Priority {prio} (Watch)</span>;
+        return (
+          <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)' }}>
+            Priority {prio} (Watch)
+          </span>
+        );
     }
   };
 
-  // Node positions on a clean layout for the 5 demo services
-  const nodePositions = {
-    'web-gateway': { x: 100, y: 150 },
-    'auth-service': { x: 340, y: 70 },
-    'order-service': { x: 340, y: 230 },
-    'inventory-service': { x: 580, y: 170 },
-    'payment-service': { x: 580, y: 290 },
-  };
+  // Dynamic Clustered Force/Orbital Layout inspired by Reference 3 (glyphtrail)
+  const nodeLayout = useMemo(() => {
+    const rawNodes = topology?.nodes || [];
+    const positions = {};
+    const center = { x: 420, y: 220 };
+
+    // Group nodes or arrange in orbital shell
+    const n = rawNodes.length;
+    if (n === 0) return positions;
+
+    // Define preset coordinates for high readability, plus radial fallback for dynamically ingested services
+    const defaultCoords = {
+      'web-gateway': { x: 140, y: 220, tierColor: '#f59e0b', ring: 1 },
+      'auth-service': { x: 380, y: 110, tierColor: '#00f2fe', ring: 1 },
+      'order-service': { x: 420, y: 310, tierColor: '#00f2fe', ring: 1 },
+      'inventory-service': { x: 680, y: 160, tierColor: '#ef4444', ring: 2 },
+      'payment-service': { x: 690, y: 310, tierColor: '#a78bfa', ring: 2 },
+    };
+
+    rawNodes.forEach((node, idx) => {
+      if (defaultCoords[node.service]) {
+        positions[node.service] = defaultCoords[node.service];
+      } else {
+        // Radial distribution
+        const angle = (idx / n) * Math.PI * 2;
+        const radius = 180 + (idx % 2) * 60;
+        positions[node.service] = {
+          x: center.x + Math.cos(angle) * radius,
+          y: center.y + Math.sin(angle) * radius,
+          tierColor: '#38bdf8',
+          ring: 2,
+        };
+      }
+    });
+
+    return positions;
+  }, [topology]);
+
+  // Filtered nodes
+  const filteredNodes = useMemo(() => {
+    if (!topology?.nodes) return [];
+    return topology.nodes.filter((node) => {
+      const matchesSearch = !searchQuery || node.service.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'failing' && node.status === 'failing') ||
+        (statusFilter === 'at_risk' && node.status === 'at_risk') ||
+        (statusFilter === 'healthy' && node.status === 'healthy');
+      return matchesSearch && matchesStatus;
+    });
+  }, [topology, searchQuery, statusFilter]);
 
   return (
-    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 20px' }}>
+    <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '24px 20px', position: 'relative', zIndex: 1 }}>
       {/* Header Bar */}
       <div
         className="glass-panel"
         style={{
           padding: '16px 20px',
-          marginBottom: '24px',
+          marginBottom: '20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '12px',
+          border: '1px solid rgba(167, 139, 250, 0.25)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -144,26 +213,33 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
               gap: '6px',
               fontSize: '0.8rem',
               cursor: 'pointer',
+              fontWeight: '600',
             }}
           >
             <ChevronLeft size={16} /> Back to Dashboard
           </button>
           <div style={{ width: '1px', height: '24px', background: 'var(--border)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ background: 'rgba(167, 139, 250, 0.15)', padding: '6px 8px', borderRadius: '8px', color: '#a78bfa' }}>
-              <Share2 size={18} />
+            <div
+              style={{
+                background: 'rgba(167, 139, 250, 0.15)',
+                padding: '8px',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                border: '1px solid rgba(167, 139, 250, 0.3)',
+              }}
+            >
+              <Share2 size={20} />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ fontSize: '1.1rem', fontWeight: '800' }}>
-                  Feature 4 — Dependency & Impact Radar
-                </h2>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: '800' }}>Feature 4 — Dependency & Impact Radar</h2>
                 <span className="badge badge-medium" style={{ color: '#a78bfa', borderColor: 'rgba(167, 139, 250, 0.3)' }}>
-                  What else breaks?
+                  CODE TOPOLOGY INTELLIGENCE
                 </span>
               </div>
-              <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                Project: <strong>{project?.name || 'Active Workspace'}</strong> · Directed Service Topology & Cascading Blast-Radius
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                Project: <strong>{project?.name || 'Active Workspace'}</strong> · NetworkX Directed Graph & Blast-Radius Engine
               </p>
             </div>
           </div>
@@ -172,14 +248,18 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
         <button
           onClick={() => loadTopologyAndAnalyze(selectedService)}
           disabled={loading || analyzing}
-          className="btn-secondary"
           style={{
             padding: '8px 16px',
             fontSize: '0.82rem',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
+            background: 'rgba(167, 139, 250, 0.12)',
+            border: '1px solid rgba(167, 139, 250, 0.35)',
+            color: '#c4b5fd',
+            borderRadius: '8px',
             cursor: 'pointer',
+            fontWeight: '600',
           }}
         >
           <RefreshCw size={14} className={loading || analyzing ? 'spin' : ''} /> Refresh Topology
@@ -192,7 +272,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
           className="glass-panel"
           style={{
             padding: '16px 20px',
-            marginBottom: '24px',
+            marginBottom: '20px',
             borderLeft: '4px solid #f87171',
             background: 'rgba(239, 68, 68, 0.08)',
             display: 'flex',
@@ -207,132 +287,404 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
           </div>
           <button
             onClick={() => loadTopologyAndAnalyze(selectedService)}
-            style={{ background: 'transparent', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.8rem' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#fca5a5',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+            }}
           >
             Retry
           </button>
         </div>
       )}
 
-      {/* Interactive Topology Graph Canvas */}
+      {/* Reference 3: High-Tech Code Intelligence Graph Canvas (glyphtrail Style) */}
       <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Network size={18} color="#a78bfa" />
-            <h3 style={{ fontSize: '1rem', fontWeight: '700' }}>Interactive Service Dependency Topology</h3>
+        {/* Graph Controls Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Network size={20} color="#00f2fe" />
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: '800' }}>Local Software Intelligence & Dependency Graph</h3>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                {topology?.nodes?.length || 0} entities · {topology?.edges?.length || 0} directed dependency relationships
+              </span>
+            </div>
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            Click any service node below to inspect its cascading blast radius
+
+          {/* Search & Filters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(6, 9, 19, 0.6)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '4px 10px',
+              }}
+            >
+              <Search size={14} color="var(--text-muted)" />
+              <input
+                type="text"
+                placeholder="Search entity..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  width: '120px',
+                }}
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                background: 'rgba(6, 9, 19, 0.6)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-secondary)',
+                borderRadius: '8px',
+                padding: '5px 10px',
+                fontSize: '0.78rem',
+                outline: 'none',
+              }}
+            >
+              <option value="all">All States</option>
+              <option value="failing">Failing Only</option>
+              <option value="at_risk">At Risk</option>
+              <option value="healthy">Healthy</option>
+            </select>
+
+            {/* Zoom Controls */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                background: 'rgba(6, 9, 19, 0.6)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '2px',
+              }}
+            >
+              <button
+                onClick={() => setZoomLevel((z) => Math.min(1.5, z + 0.1))}
+                title="Zoom In"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                onClick={() => setZoomLevel((z) => Math.max(0.7, z - 0.1))}
+                title="Zoom Out"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                }}
+              >
+                <ZoomOut size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  setZoomLevel(1);
+                  setPanOffset({ x: 0, y: 0 });
+                }}
+                title="Reset View"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  padding: '4px 6px',
+                  cursor: 'pointer',
+                }}
+              >
+                <RotateCcw size={14} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Visual Graph Area */}
+        {/* Visual Graph Area (glyphtrail style) */}
         <div
           style={{
             width: '100%',
-            height: '340px',
-            background: 'rgba(0, 0, 0, 0.4)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
+            height: '420px',
+            background: 'radial-gradient(circle at center, #0e1526 0%, #060913 100%)',
+            border: '1px solid rgba(0, 242, 254, 0.2)',
+            borderRadius: '14px',
             position: 'relative',
             overflow: 'hidden',
+            boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.8)',
           }}
         >
-          <svg style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+          {/* Subtle Grid Pattern */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage:
+                'radial-gradient(circle, rgba(115, 217, 245, 0.1) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+              opacity: 0.4,
+              pointerEvents: 'none',
+            }}
+          />
+
+          <svg
+            style={{
+              width: '100%',
+              height: '100%',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              transform: `scale(${zoomLevel}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+              transformOrigin: 'center center',
+              transition: 'transform 0.2s ease',
+            }}
+            viewBox="0 0 840 440"
+          >
             <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa" opacity="0.7" />
+              {/* Glowing Arrow Markers */}
+              <marker
+                id="radarArrow"
+                viewBox="0 0 10 10"
+                refX="22"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#00f2fe" opacity="0.8" />
               </marker>
+
+              <marker
+                id="radarArrowError"
+                viewBox="0 0 10 10"
+                refX="22"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" opacity="0.9" />
+              </marker>
+
+              {/* Edge Gradient */}
+              <linearGradient id="edgeGradNormal" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#00f2fe" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.4" />
+              </linearGradient>
+
+              <linearGradient id="edgeGradError" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#ef4444" stopOpacity="0.9" />
+              </linearGradient>
             </defs>
 
-            {/* Render Edges */}
+            {/* Ambient Background Orbital Concentric Rings */}
+            <circle cx="420" cy="220" r="140" fill="none" stroke="rgba(115, 217, 245, 0.04)" strokeDasharray="6 6" />
+            <circle cx="420" cy="220" r="280" fill="none" stroke="rgba(115, 217, 245, 0.03)" strokeDasharray="8 8" />
+
+            {/* Render Smooth Curved Bezier Edges */}
             {topology?.edges?.map((edge, idx) => {
-              const srcPos = nodePositions[edge.source];
-              const tgtPos = nodePositions[edge.target];
+              const srcPos = nodeLayout[edge.source];
+              const tgtPos = nodeLayout[edge.target];
               if (!srcPos || !tgtPos) return null;
+
               const isSelectedPath = edge.target === selectedService || edge.source === selectedService;
+              const hasErrors = edge.error_count > 0;
+
+              // Quadratic Bezier curve control point with slight bow
+              const midX = (srcPos.x + tgtPos.x) / 2;
+              const midY = (srcPos.y + tgtPos.y) / 2 - 25;
+              const pathData = `M ${srcPos.x} ${srcPos.y} Q ${midX} ${midY} ${tgtPos.x} ${tgtPos.y}`;
+
               return (
                 <g key={idx}>
-                  <line
-                    x1={srcPos.x + 60}
-                    y1={srcPos.y + 20}
-                    x2={tgtPos.x + 60}
-                    y2={tgtPos.y + 20}
-                    stroke={isSelectedPath ? '#c4b5fd' : 'rgba(255, 255, 255, 0.15)'}
-                    strokeWidth={isSelectedPath ? 2.5 : 1.5}
-                    strokeDasharray={edge.evidence_source === 'configured_demo_topology' ? '4,4' : 'none'}
-                    markerEnd="url(#arrow)"
-                  />
-                  {edge.error_count > 0 && (
-                    <text
-                      x={(srcPos.x + tgtPos.x) / 2 + 50}
-                      y={(srcPos.y + tgtPos.y) / 2 + 10}
-                      fill="#f87171"
-                      fontSize="10"
-                      fontFamily="monospace"
-                      fontWeight="bold"
-                    >
-                      {edge.error_count} errs
-                    </text>
+                  {/* Outer Glow Line for Selected Path */}
+                  {isSelectedPath && (
+                    <path
+                      d={pathData}
+                      fill="none"
+                      stroke={hasErrors ? 'rgba(239, 68, 68, 0.35)' : 'rgba(0, 242, 254, 0.35)'}
+                      strokeWidth="6"
+                    />
                   )}
+
+                  {/* Main Curved Line */}
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={
+                      hasErrors
+                        ? 'url(#edgeGradError)'
+                        : isSelectedPath
+                        ? '#00f2fe'
+                        : 'rgba(115, 217, 245, 0.2)'
+                    }
+                    strokeWidth={isSelectedPath ? 2.5 : 1.4}
+                    strokeDasharray={isSelectedPath ? '6 3' : 'none'}
+                    markerEnd={hasErrors ? 'url(#radarArrowError)' : 'url(#radarArrow)'}
+                    className={isSelectedPath ? 'animated-flow-edge' : ''}
+                  />
+
+                  {/* Error badge along edge */}
+                  {hasErrors && (
+                    <g transform={`translate(${midX}, ${midY + 12})`}>
+                      <rect x="-24" y="-8" width="48" height="16" rx="8" fill="#1e1014" stroke="#ef4444" strokeWidth="1" />
+                      <text x="0" y="3" fill="#f87171" fontSize="9" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                        {edge.error_count} errs
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Render Circular Nodes with glyphtrail style */}
+            {filteredNodes.map((node) => {
+              const pos = nodeLayout[node.service] || { x: 420, y: 220 };
+              const isSelected = selectedService === node.service;
+              const isHovered = hoveredNode?.service === node.service;
+              const isFailing = node.status === 'failing';
+              const isAtRisk = node.status === 'at_risk';
+
+              // Sizing based on degree or failures
+              const baseRadius = isSelected ? 22 : 18;
+
+              // Color scheme
+              let nodeColor = '#00f2fe';
+              if (isFailing) nodeColor = '#ef4444';
+              else if (isAtRisk) nodeColor = '#f59e0b';
+              else if (node.tier === 'data') nodeColor = '#a78bfa';
+              else if (node.tier === 'ingress') nodeColor = '#38bdf8';
+
+              return (
+                <g
+                  key={node.service}
+                  transform={`translate(${pos.x}, ${pos.y})`}
+                  onClick={() => handleSelectService(node.service)}
+                  onMouseEnter={() => setHoveredNode(node)}
+                  onMouseLeave={() => setHoveredNode(null)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {/* Concentric Pulsating Ring for Failing or Selected Nodes */}
+                  {(isSelected || isFailing) && (
+                    <circle
+                      r={baseRadius + 10}
+                      fill="none"
+                      stroke={nodeColor}
+                      strokeWidth="1.5"
+                      strokeDasharray="4 4"
+                      opacity="0.6"
+                      className="spin"
+                    />
+                  )}
+
+                  {/* Outer Glow Halo */}
+                  <circle
+                    r={baseRadius + 5}
+                    fill={nodeColor}
+                    fillOpacity={isSelected ? 0.25 : 0.12}
+                    filter="blur(2px)"
+                  />
+
+                  {/* Core Node Circle */}
+                  <circle
+                    r={baseRadius}
+                    fill="#060913"
+                    stroke={nodeColor}
+                    strokeWidth={isSelected ? 3 : 2}
+                  />
+
+                  {/* Center Dot Indicator */}
+                  <circle
+                    r={isSelected ? 7 : 5}
+                    fill={nodeColor}
+                    className={isFailing ? 'sentinel-core-pulse' : ''}
+                  />
+
+                  {/* Node Title Label */}
+                  <text
+                    y={baseRadius + 18}
+                    fill={isSelected ? '#ffffff' : 'var(--text-primary)'}
+                    fontSize="11"
+                    fontWeight={isSelected ? '800' : '600'}
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {node.service}
+                  </text>
+
+                  {/* Tier / Error Sublabel */}
+                  <text
+                    y={baseRadius + 30}
+                    fill={isFailing ? '#f87171' : 'var(--text-muted)'}
+                    fontSize="9.5"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {isFailing ? `${node.error_count} ERRORS` : node.tier?.toUpperCase()}
+                  </text>
                 </g>
               );
             })}
           </svg>
 
-          {/* Render Interactive Node Cards */}
-          {topology?.nodes?.map((node) => {
-            const pos = nodePositions[node.service] || { x: 200, y: 150 };
-            const isSelected = selectedService === node.service;
-            const isFailing = node.status === 'failing';
-            return (
-              <div
-                key={node.service}
-                onClick={() => handleSelectService(node.service)}
-                style={{
-                  position: 'absolute',
-                  left: `${pos.x}px`,
-                  top: `${pos.y}px`,
-                  width: '140px',
-                  padding: '10px 12px',
-                  background: isSelected
-                    ? 'rgba(167, 139, 250, 0.25)'
-                    : isFailing
-                    ? 'rgba(239, 68, 68, 0.15)'
-                    : 'rgba(20, 26, 38, 0.85)',
-                  border: isSelected
-                    ? '2px solid #a78bfa'
-                    : isFailing
-                    ? '1.5px solid #f87171'
-                    : '1px solid var(--border)',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  boxShadow: isSelected ? '0 0 15px rgba(167, 139, 250, 0.4)' : 'none',
-                  transition: 'all 0.2s ease',
-                  userSelect: 'none',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: isSelected ? '#fff' : 'var(--text-primary)' }}>
-                    {node.service}
-                  </span>
-                  {node.error_count > 0 ? (
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f87171' }} />
-                  ) : (
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#34d399' }} />
-                  )}
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {node.tier}
-                </div>
-                {node.error_count > 0 && (
-                  <div style={{ fontSize: '0.68rem', color: '#f87171', fontWeight: 'bold', marginTop: '2px' }}>
-                    {node.error_count} errors
-                  </div>
-                )}
+          {/* Interactive Inspection Popover on Hover or Selection */}
+          {(hoveredNode || selectedService) && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '16px',
+                right: '16px',
+                background: 'rgba(6, 9, 19, 0.88)',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                borderRadius: '12px',
+                padding: '12px 18px',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+                maxWidth: '300px',
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <strong style={{ fontSize: '0.88rem', color: '#fff', fontFamily: 'monospace' }}>
+                  {hoveredNode?.service || selectedService}
+                </strong>
+                {getStatusBadge(hoveredNode?.status || 'failing')}
               </div>
-            );
-          })}
+              <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Click node to recalculate cascading blast radius and inspect downstream paths.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -349,6 +701,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: '16px',
               alignItems: 'center',
+              border: '1px solid rgba(0, 242, 254, 0.18)',
             }}
           >
             <div>
@@ -356,7 +709,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
                 Suspected Failure Point
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <strong style={{ fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
                   {impactReport.suspected_component}
                 </strong>
                 {getStatusBadge(impactReport.impacted_components?.[0]?.status)}
@@ -368,7 +721,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
                 Blast Radius (Dependents)
               </span>
               <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#ffd36e', marginTop: '2px' }}>
-                {impactReport.impacted_components?.length - 1 || 0} Connected Services
+                {Math.max(0, (impactReport.impacted_components?.length || 1) - 1)} Connected Services
               </div>
             </div>
 
@@ -385,7 +738,7 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
               <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                 Topology Confidence
               </span>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--accent)', marginTop: '2px' }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--accent-cyan)', marginTop: '2px' }}>
                 {Math.round(impactReport.confidence * 100)}%
               </div>
             </div>
@@ -395,44 +748,54 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
           <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <ShieldAlert size={18} color="#f87171" />
-              <h3 style={{ fontSize: '1.05rem', fontWeight: '700' }}>
-                Cascading Impact Breakdown & Investigation Priority
-              </h3>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: '800' }}>Cascading Impact Breakdown & Investigation Priority</h3>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {impactReport.impacted_components?.map((comp, idx) => (
+              {impactReport.impacted_components?.map((comp) => (
                 <div
                   key={comp.service}
                   style={{
-                    background: comp.observed_failure ? 'rgba(239, 68, 68, 0.06)' : 'rgba(255, 255, 255, 0.02)',
-                    border: comp.observed_failure ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)',
-                    borderRadius: '10px',
-                    padding: '16px 18px',
+                    background: comp.observed_failure ? 'rgba(239, 68, 68, 0.08)' : 'rgba(6, 9, 19, 0.45)',
+                    border: comp.observed_failure
+                      ? '1px solid rgba(239, 68, 68, 0.35)'
+                      : '1px solid rgba(115, 217, 245, 0.15)',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '8px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                      marginBottom: '8px',
+                    }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <strong style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                      <strong style={{ fontSize: '1rem', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
                         [{comp.service}]
                       </strong>
                       {getStatusBadge(comp.status)}
                       <span className="badge" style={{ fontSize: '0.72rem' }}>
-                        {comp.relationship.replace('_', ' ').toUpperCase()} ({comp.distance} hop{comp.distance === 1 ? '' : 's'})
+                        {comp.relationship.replace('_', ' ').toUpperCase()} ({comp.distance} hop
+                        {comp.distance === 1 ? '' : 's'})
                       </span>
                     </div>
-                    <div>
-                      {getPriorityBadge(comp.priority)}
-                    </div>
+                    <div>{getPriorityBadge(comp.priority)}</div>
                   </div>
 
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: '1.5' }}>
                     <strong>Impact Rationale:</strong> {comp.reason}
                   </p>
 
-                  <div style={{ fontSize: '0.78rem', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <ArrowRight size={13} />
-                    <span><strong>Recommended Action:</strong> {comp.recommended_action}</span>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ArrowRight size={14} />
+                    <span>
+                      <strong>Recommended Action:</strong> {comp.recommended_action}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -440,11 +803,11 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
           </div>
 
           {/* Grid: Dependency Paths & Supporting Evidence */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px', marginBottom: '24px' }}>
             {/* Dependency Call Cascades */}
             <div className="glass-panel" style={{ padding: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <Layers size={18} color="var(--accent)" />
+                <Layers size={18} color="var(--accent-cyan)" />
                 <h3 style={{ fontSize: '1rem', fontWeight: '700' }}>Cascading Dependency Paths</h3>
               </div>
 
@@ -454,12 +817,13 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
                     <div
                       key={i}
                       style={{
-                        background: 'rgba(0, 0, 0, 0.3)',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        fontSize: '0.8rem',
+                        background: 'rgba(6, 9, 19, 0.6)',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.82rem',
                         fontFamily: 'monospace',
                         color: 'var(--text-primary)',
+                        border: '1px solid var(--border)',
                       }}
                     >
                       {path.join(' ➔ ')}
@@ -478,11 +842,22 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
                 <h3 style={{ fontSize: '1rem', fontWeight: '700' }}>Suggested Investigation Steps</h3>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {impactReport.suggested_investigation_steps?.map((step, i) => (
-                  <p key={i} style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
-                    {step}
-                  </p>
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      fontSize: '0.82rem',
+                      color: 'var(--text-secondary)',
+                      lineHeight: '1.5',
+                    }}
+                  >
+                    <span style={{ color: '#ffd36e', fontWeight: 'bold' }}>{i + 1}.</span>
+                    <span>{step}</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -502,6 +877,17 @@ export default function DependencyRadarWorkspace({ project, onBackToDashboard })
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes flowDash {
+          to {
+            stroke-dashoffset: -30;
+          }
+        }
+        .animated-flow-edge {
+          animation: flowDash 1.2s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }
