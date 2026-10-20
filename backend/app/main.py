@@ -75,9 +75,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
     )
 
-# Include API routers under /api
+# Include API routers under /api and root health router
 app.include_router(health_router, prefix=settings.api_prefix)
-# Also register health router at root for direct /health access
 app.include_router(health_router)
 app.include_router(telemetry_router, prefix=settings.api_prefix)
 app.include_router(incidents_router, prefix=settings.api_prefix)
@@ -91,8 +90,6 @@ app.include_router(rag_router, prefix=settings.api_prefix)
 @app.get("/")
 @app.get("/api")
 @app.get("/api/")
-@app.get("/api/index.py")
-@app.get("/api/index")
 async def root():
     return {
         "platform": settings.app_name,

@@ -34,7 +34,7 @@ def test_demo_app_importability():
 
 
 def test_vercel_entrypoint_app():
-    """Verify that api.index exports a valid FastAPI application with attributes."""
+    """Verify that api.index exports a valid FastAPI application."""
     try:
         from api.index import app
     except ImportError:
@@ -77,40 +77,6 @@ def test_vercel_routes_root_and_health():
     assert "/api/health" in schema["paths"]
     assert "/health" in schema["paths"]
     assert "/api/demo/scenario/{scenario_name}" in schema["paths"]
-
-
-def test_vercel_rewrite_simulation():
-    """Simulate Vercel edge rewrite behaviors with x-matched-path header."""
-    try:
-        from api.index import app
-    except ImportError:
-        from backend.api.index import app
-    client = TestClient(app)
-
-    # Simulation 1: Vercel rewrote incoming /api/health to /api/index with x-matched-path
-    r1 = client.get("/api/index", headers={"x-matched-path": "/api/health"})
-    assert r1.status_code == 200
-    assert r1.json().get("status") == "healthy"
-
-    # Simulation 2: Vercel rewrote incoming /health to /api/index with x-matched-path
-    r2 = client.get("/api/index", headers={"x-matched-path": "/health"})
-    assert r2.status_code == 200
-    assert r2.json().get("status") == "healthy"
-
-    # Simulation 3: Vercel rewrote incoming / to /api/index with x-matched-path
-    r3 = client.get("/api/index", headers={"x-matched-path": "/"})
-    assert r3.status_code == 200
-    assert r3.json().get("status") == "operational"
-
-    # Simulation 4: Legacy /api/index.py destination with x-matched-path
-    r4 = client.get("/api/index.py", headers={"x-matched-path": "/api/health"})
-    assert r4.status_code == 200
-    assert r4.json().get("status") == "healthy"
-
-    # Simulation 5: Direct call to /api/index without header (fallback to operational root)
-    r5 = client.get("/api/index")
-    assert r5.status_code == 200
-    assert r5.json().get("status") == "operational"
 
 
 def test_vercel_demo_scenario_endpoints():
