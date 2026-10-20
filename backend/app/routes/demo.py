@@ -2,14 +2,24 @@
 from fastapi import APIRouter, Depends, HTTPException
 from ..storage.memory_store import store
 from ..auth.security import UserContext, get_current_user
-from demo_app.service import DemoAppService
-from demo_app.scenarios import (
-    inject_db_pool_exhaustion,
-    inject_bad_auth_deployment,
-    inject_payment_timeout,
-    generate_healthy_traffic,
-    recover_all,
-)
+try:
+    from demo_app.service import DemoAppService
+    from demo_app.scenarios import (
+        inject_db_pool_exhaustion,
+        inject_bad_auth_deployment,
+        inject_payment_timeout,
+        generate_healthy_traffic,
+        recover_all,
+    )
+except ImportError:
+    from backend.demo_app.service import DemoAppService
+    from backend.demo_app.scenarios import (
+        inject_db_pool_exhaustion,
+        inject_bad_auth_deployment,
+        inject_payment_timeout,
+        generate_healthy_traffic,
+        recover_all,
+    )
 
 router = APIRouter(prefix="/demo", tags=["Demo"])
 

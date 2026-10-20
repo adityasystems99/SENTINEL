@@ -1,6 +1,9 @@
 """Failure injection and recovery scenarios for demo service."""
 import time
-from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
+try:
+    from app.models.telemetry import TelemetryEvent, LogLevel, EventType
+except ImportError:
+    from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 from .service import DemoAppService
 
 # Ground truth catalog for evaluation and validation

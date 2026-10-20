@@ -5,7 +5,10 @@ Strictly isolates ground-truth labels from telemetry inputs.
 import time
 import uuid
 from typing import Dict, List, Tuple
-from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
+try:
+    from app.models.telemetry import TelemetryEvent, LogLevel, EventType
+except ImportError:
+    from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 
 # Ground-truth evaluation catalog (kept isolated so ranker cannot inspect answers)
 PHASE9_EVALUATION_DATASET: Dict[str, dict] = {

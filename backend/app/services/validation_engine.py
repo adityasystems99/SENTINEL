@@ -16,13 +16,22 @@ from ..models.validation import (
     FixValidationReport,
     ValidationVerdict,
 )
-from demo_app.service import DemoAppService
-from demo_app.scenarios import (
-    inject_bad_auth_deployment,
-    inject_db_pool_exhaustion,
-    inject_payment_timeout,
-    recover_all,
-)
+try:
+    from demo_app.service import DemoAppService
+    from demo_app.scenarios import (
+        inject_bad_auth_deployment,
+        inject_db_pool_exhaustion,
+        inject_payment_timeout,
+        recover_all,
+    )
+except ImportError:
+    from backend.demo_app.service import DemoAppService
+    from backend.demo_app.scenarios import (
+        inject_bad_auth_deployment,
+        inject_db_pool_exhaustion,
+        inject_payment_timeout,
+        recover_all,
+    )
 from ..storage.memory_store import store
 
 # Predefined failure scenarios supported by the local instrumented architecture
