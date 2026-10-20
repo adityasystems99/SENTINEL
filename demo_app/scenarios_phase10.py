@@ -3,7 +3,10 @@ Isolates ground-truth definitions from telemetry inputs so the ranker cannot ins
 """
 import time
 from typing import Dict, List
-from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
+try:
+    from app.models.telemetry import TelemetryEvent, LogLevel, EventType
+except ImportError:
+    from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 
 PHASE10_SCENARIO_CATALOG: Dict[str, dict] = {
     "dns_nxdomain_resolution_failure": {

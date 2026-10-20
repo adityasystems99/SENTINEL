@@ -13,7 +13,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Dict, List, Optional
 import httpx
 
-from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
+try:
+    from app.models.telemetry import TelemetryEvent, LogLevel, EventType
+except ImportError:
+    from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 
 
 class BaseTelemetryHandler(BaseHTTPRequestHandler):

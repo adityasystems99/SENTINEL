@@ -5,7 +5,10 @@ Emits telemetry events into SENTINEL.
 import time
 import uuid
 from typing import Callable, List, Optional
-from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
+try:
+    from app.models.telemetry import TelemetryEvent, LogLevel, EventType
+except ImportError:
+    from backend.app.models.telemetry import TelemetryEvent, LogLevel, EventType
 
 class DemoAppService:
     def __init__(self, telemetry_sink: Optional[Callable[[List[TelemetryEvent]], None]] = None):
