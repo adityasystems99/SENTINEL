@@ -5,7 +5,9 @@ from ..storage.memory_store import store
 
 router = APIRouter(tags=["Health"])
 
+
 @router.get("/health")
+@router.get("/health/")
 async def health_check():
     """Health check endpoint reporting telemetry and incident volume."""
     return {

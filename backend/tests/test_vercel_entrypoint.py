@@ -1,4 +1,4 @@
-"""Focused tests for Vercel entrypoint and demo_app module resolution."""
+"""Focused tests for Vercel entrypoint, routing, and demo_app module resolution."""
 import os
 import sys
 import pytest
@@ -34,7 +34,7 @@ def test_demo_app_importability():
 
 
 def test_vercel_entrypoint_app():
-    """Verify that api.index exports a valid FastAPI application."""
+    """Verify that api.index exports a valid FastAPI application with attributes."""
     try:
         from api.index import app
     except ImportError:
@@ -44,23 +44,27 @@ def test_vercel_entrypoint_app():
 
 
 def test_vercel_routes_root_and_health():
-    """Verify core Vercel endpoints /, /docs, /openapi.json, and /api/health."""
+    """Verify core Vercel endpoints /, /api, /api/health, /health, /docs, and /openapi.json."""
     try:
         from api.index import app
     except ImportError:
         from backend.api.index import app
     client = TestClient(app)
 
-    # Root /
-    root_resp = client.get("/")
-    assert root_resp.status_code == 200, f"Root / failed with {root_resp.status_code}: {root_resp.text}"
-    assert "platform" in root_resp.json()
-    assert root_resp.json().get("status") == "operational"
+    # Root / and /api
+    for p in ("/", "/api", "/api/"):
+        resp = client.get(p)
+        assert resp.status_code == 200, f"{p} failed with {resp.status_code}: {resp.text}"
+        data = resp.json()
+        assert "platform" in data
+        assert data.get("status") == "operational"
 
-    # Health
-    health_resp = client.get("/api/health")
-    assert health_resp.status_code == 200, f"/api/health failed: {health_resp.text}"
-    assert health_resp.json().get("status") == "healthy"
+    # Health checks: /api/health and /health (and slash variants)
+    for hp in ("/api/health", "/api/health/", "/health", "/health/"):
+        h_resp = client.get(hp)
+        assert h_resp.status_code == 200, f"{hp} failed: {h_resp.text}"
+        assert h_resp.json().get("status") == "healthy"
+        assert h_resp.json().get("service") == "SENTINEL Backend"
 
     # Docs & OpenAPI
     docs_resp = client.get("/docs")
@@ -71,7 +75,42 @@ def test_vercel_routes_root_and_health():
     schema = openapi_resp.json()
     assert "paths" in schema
     assert "/api/health" in schema["paths"]
+    assert "/health" in schema["paths"]
     assert "/api/demo/scenario/{scenario_name}" in schema["paths"]
+
+
+def test_vercel_rewrite_simulation():
+    """Simulate Vercel edge rewrite behaviors with x-matched-path header."""
+    try:
+        from api.index import app
+    except ImportError:
+        from backend.api.index import app
+    client = TestClient(app)
+
+    # Simulation 1: Vercel rewrote incoming /api/health to /api/index with x-matched-path
+    r1 = client.get("/api/index", headers={"x-matched-path": "/api/health"})
+    assert r1.status_code == 200
+    assert r1.json().get("status") == "healthy"
+
+    # Simulation 2: Vercel rewrote incoming /health to /api/index with x-matched-path
+    r2 = client.get("/api/index", headers={"x-matched-path": "/health"})
+    assert r2.status_code == 200
+    assert r2.json().get("status") == "healthy"
+
+    # Simulation 3: Vercel rewrote incoming / to /api/index with x-matched-path
+    r3 = client.get("/api/index", headers={"x-matched-path": "/"})
+    assert r3.status_code == 200
+    assert r3.json().get("status") == "operational"
+
+    # Simulation 4: Legacy /api/index.py destination with x-matched-path
+    r4 = client.get("/api/index.py", headers={"x-matched-path": "/api/health"})
+    assert r4.status_code == 200
+    assert r4.json().get("status") == "healthy"
+
+    # Simulation 5: Direct call to /api/index without header (fallback to operational root)
+    r5 = client.get("/api/index")
+    assert r5.status_code == 200
+    assert r5.json().get("status") == "operational"
 
 
 def test_vercel_demo_scenario_endpoints():
