@@ -16,8 +16,12 @@ def test_demo_app_importability():
         from demo_app.service import DemoAppService
         from demo_app.scenarios import recover_all, inject_bad_auth_deployment
     except ImportError:
-        from backend.demo_app.service import DemoAppService
-        from backend.demo_app.scenarios import recover_all, inject_bad_auth_deployment
+        try:
+            from app.demo_app.service import DemoAppService
+            from app.demo_app.scenarios import recover_all, inject_bad_auth_deployment
+        except ImportError:
+            from backend.demo_app.service import DemoAppService
+            from backend.demo_app.scenarios import recover_all, inject_bad_auth_deployment
 
     svc = DemoAppService()
     assert svc is not None
@@ -39,17 +43,23 @@ def test_vercel_entrypoint_app():
     assert "SENTINEL" in app.title
 
 
-def test_vercel_routes_docs_and_health():
-    """Verify core Vercel endpoints /docs, /openapi.json, and /api/health."""
+def test_vercel_routes_root_and_health():
+    """Verify core Vercel endpoints /, /docs, /openapi.json, and /api/health."""
     try:
         from api.index import app
     except ImportError:
         from backend.api.index import app
     client = TestClient(app)
 
+    # Root /
+    root_resp = client.get("/")
+    assert root_resp.status_code == 200, f"Root / failed with {root_resp.status_code}: {root_resp.text}"
+    assert "platform" in root_resp.json()
+    assert root_resp.json().get("status") == "operational"
+
     # Health
     health_resp = client.get("/api/health")
-    assert health_resp.status_code == 200
+    assert health_resp.status_code == 200, f"/api/health failed: {health_resp.text}"
     assert health_resp.json().get("status") == "healthy"
 
     # Docs & OpenAPI
@@ -74,12 +84,12 @@ def test_vercel_demo_scenario_endpoints():
 
     # Recover scenario
     rec_resp = client.post("/api/demo/scenario/recover")
-    assert rec_resp.status_code == 200
+    assert rec_resp.status_code == 200, f"Recover scenario failed: {rec_resp.text}"
     assert rec_resp.json().get("status") == "recovered"
 
     # Bad-auth scenario
     auth_resp = client.post("/api/demo/scenario/bad_auth_deployment?count=1")
-    assert auth_resp.status_code == 200
+    assert auth_resp.status_code == 200, f"Bad-auth scenario failed: {auth_resp.text}"
     assert auth_resp.json().get("scenario") == "bad_auth_deployment"
     assert auth_resp.json().get("status") == "injected"
 

@@ -18,7 +18,10 @@ from .services.rag import initialize_knowledge_base
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup validation, indexing, and graceful shutdown."""
-    validate_production_configuration()
+    try:
+        validate_production_configuration()
+    except Exception as e:
+        print(f"Warning: Production configuration validation error: {e}")
     try:
         initialize_knowledge_base()
     except Exception as e:

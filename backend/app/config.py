@@ -1,5 +1,6 @@
 """Configuration settings for SENTINEL Backend."""
 import os
+import tempfile
 from typing import List
 from pydantic import BaseModel
 
@@ -13,6 +14,16 @@ def _get_cors_origins() -> List[str]:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+def _get_default_data_dir() -> str:
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return os.path.join(tempfile.gettempdir(), "sentinel_data")
+    return os.path.join(os.getcwd(), "data")
+
+def _get_default_projects_dir() -> str:
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return os.path.join(tempfile.gettempdir(), "sentinel_projects")
+    return os.path.join(os.getcwd(), "data", "projects")
 
 class Settings(BaseModel):
     app_name: str = "SENTINEL — Developer Intelligence Platform"
@@ -39,8 +50,8 @@ class Settings(BaseModel):
     deduplication_cache_size: int = 10000
 
     # Project Ingestion & Storage Settings
-    data_dir: str = os.path.join(os.getcwd(), "data")
-    projects_dir: str = os.path.join(os.getcwd(), "data", "projects")
+    data_dir: str = _get_default_data_dir()
+    projects_dir: str = _get_default_projects_dir()
     
     # Upload limits
     max_upload_size_bytes: int = 50 * 1024 * 1024       # 50 MB
@@ -84,5 +95,3 @@ def validate_production_configuration() -> None:
             errors.append("SENTINEL_CORS_ORIGINS must not contain wildcard '*' in production.")
         if errors:
             raise RuntimeError("Production security validation failed:\n - " + "\n - ".join(errors))
-
-

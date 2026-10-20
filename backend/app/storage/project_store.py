@@ -18,8 +18,18 @@ class ProjectStore:
 
     def _init_storage(self):
         """Ensure base directory exists and load existing metadata."""
-        os.makedirs(self.base_dir, exist_ok=True)
+        try:
+            os.makedirs(self.base_dir, exist_ok=True)
+        except OSError:
+            import tempfile
+            self.base_dir = os.path.join(tempfile.gettempdir(), "sentinel_projects")
+            try:
+                os.makedirs(self.base_dir, exist_ok=True)
+            except OSError:
+                pass
         # Load existing projects on startup
+        if not os.path.exists(self.base_dir):
+            return
         for entry in os.listdir(self.base_dir):
             proj_dir = os.path.join(self.base_dir, entry)
             meta_path = os.path.join(proj_dir, "metadata.json")
