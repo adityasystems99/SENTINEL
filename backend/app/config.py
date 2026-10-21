@@ -1,19 +1,27 @@
 """Configuration settings for SENTINEL Backend."""
 import os
 import tempfile
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 def _get_cors_origins() -> List[str]:
     raw = os.getenv("SENTINEL_CORS_ORIGINS")
-    if raw:
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return [
+    default_dev_origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    production_origins = ["https://sentinel-7f6f.vercel.app"]
+    if raw:
+        origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        # Preserve local development origins if not running in production
+        if os.getenv("SENTINEL_ENV", "development").lower() != "production":
+            for d in default_dev_origins:
+                if d not in origins:
+                    origins.append(d)
+        return origins
+    return default_dev_origins + production_origins
 
 def _get_default_data_dir() -> str:
     if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
@@ -54,6 +62,7 @@ class Settings(BaseModel):
     projects_dir: str = _get_default_projects_dir()
     
     # Upload limits
+    blob_read_write_token: Optional[str] = os.getenv("BLOB_READ_WRITE_TOKEN")
     max_upload_size_bytes: int = 50 * 1024 * 1024       # 50 MB
     max_extracted_size_bytes: int = 150 * 1024 * 1024   # 150 MB
     max_archive_entries: int = 5000                     # Max files/dirs in ZIP

@@ -20,8 +20,33 @@ from ..services.audit_engine import run_audit_engine
 from ..storage.project_store import project_store
 from ..auth.security import UserContext, get_current_user, verify_project_ownership
 from ..auth.rate_limiter import check_rate_limit
+import urllib.parse
+import urllib.request
+import httpx
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
+
+class UploadSessionRequest(BaseModel):
+    filename: str
+    file_size: int
+    content_type: Optional[str] = "application/zip"
+    name: Optional[str] = None
+
+class UploadSessionResponse(BaseModel):
+    strategy: str  # "vercel_blob" or "direct"
+    project_id: str
+    upload_url: str
+    client_token: Optional[str] = None
+    pathname: Optional[str] = None
+    max_size_bytes: int
+    message: Optional[str] = None
+
+class UploadCompleteRequest(BaseModel):
+    project_id: str
+    name: Optional[str] = None
+    blob_url: str
+
 
 def get_default_capabilities(detected_frameworks: List[str]) -> List[CapabilityStatus]:
     """Derive initial capability status for the 5 SENTINEL workspaces."""
@@ -64,30 +89,22 @@ def get_default_capabilities(detected_frameworks: List[str]) -> List[CapabilityS
         ),
     ]
 
-@router.post(
-    "/upload",
-    response_model=ProjectMetadata,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="upload"))],
-)
-async def upload_project_archive(
-    file: UploadFile = File(...),
-    name: Optional[str] = Form(None),
-    current_user: UserContext = Depends(get_current_user),
-):
-    """Securely upload, validate, and isolate a project ZIP archive scoped to the authenticated user."""
-    # 1. Read file bytes and enforce size bound
-    file_bytes = await file.read()
+
+def ingest_project_archive_bytes(
+    project_id: str,
+    project_name: str,
+    file_bytes: bytes,
+    filename: str,
+    current_user: UserContext,
+) -> ProjectMetadata:
+    """Validate archive, extract safely, inspect frameworks, and persist project metadata."""
     if len(file_bytes) > settings.max_upload_size_bytes:
+        max_mb = settings.max_upload_size_bytes // (1024 * 1024)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Archive exceeds maximum upload size limit of {settings.max_upload_size_bytes} bytes.",
+            detail=f"Archive exceeds maximum upload size limit of {max_mb} MB ({settings.max_upload_size_bytes} bytes).",
         )
 
-    project_name = name or (file.filename.rsplit(".", 1)[0] if file.filename else "untitled-project")
-    project_id = f"prj-{uuid.uuid4().hex[:8]}"
-
-    # Initial metadata record (state: uploaded, bound to current user)
     metadata = ProjectMetadata(
         project_id=project_id,
         name=project_name,
@@ -98,17 +115,15 @@ async def upload_project_archive(
         owner_id=current_user.user_id,
     )
 
-    # 2. State transition: validating
     metadata.status = ProjectStatus.VALIDATING
     try:
-        validate_archive(file_bytes, file.filename or "archive.zip")
+        validate_archive(file_bytes, filename)
     except ValueError as e:
         metadata.status = ProjectStatus.FAILED
         metadata.error_message = str(e)
         project_store.save_project(metadata)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # 3. State transition: extracting into isolated workspace
     source_dir = project_store.get_source_dir(project_id)
     try:
         stats = extract_archive_safely(file_bytes, source_dir)
@@ -123,7 +138,6 @@ async def upload_project_archive(
         project_store.save_project(metadata)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to extract archive: {str(e)}")
 
-    # 4. State transition: ready
     metadata.status = ProjectStatus.READY
     metadata.file_count = stats["file_count"]
     metadata.directory_count = stats["directory_count"]
@@ -134,6 +148,175 @@ async def upload_project_archive(
 
     project_store.save_project(metadata)
     return metadata
+
+
+@router.post(
+    "/upload/session",
+    response_model=UploadSessionResponse,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="upload"))],
+)
+async def create_upload_session(
+    request: UploadSessionRequest,
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Initialize an authorized upload session. Uses Vercel Blob object storage if configured, or direct upload."""
+    if not request.filename.lower().endswith(".zip"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type: only .zip archives are supported",
+        )
+
+    if request.file_size <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size must be greater than 0 bytes.")
+    if request.file_size > settings.max_upload_size_bytes:
+        max_mb = settings.max_upload_size_bytes // (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Archive size exceeds maximum allowed upload size ({max_mb} MB).",
+        )
+
+    project_id = f"prj-{uuid.uuid4().hex[:8]}"
+    clean_filename = os.path.basename(request.filename).replace(" ", "_")
+
+    # If Vercel Blob storage is configured via BLOB_READ_WRITE_TOKEN, issue client upload token
+    blob_token = settings.blob_read_write_token
+    if blob_token:
+        pathname = f"projects/{project_id}/{clean_filename}"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://blob.vercel-storage.com",
+                    headers={
+                        "Authorization": f"Bearer {blob_token}",
+                        "x-api-version": "7",
+                    },
+                    json={
+                        "type": "generate-client-token",
+                        "pathname": pathname,
+                        "validUntil": int(time.time() + 900),  # 15 minutes
+                        "maximumSizeInBytes": settings.max_upload_size_bytes,
+                        "allowedContentTypes": ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+                        "addRandomSuffix": False,
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    client_token = data.get("clientToken")
+                    if client_token:
+                        return UploadSessionResponse(
+                            strategy="vercel_blob",
+                            project_id=project_id,
+                            upload_url=f"https://blob.vercel-storage.com/{pathname}",
+                            client_token=client_token,
+                            pathname=pathname,
+                            max_size_bytes=settings.max_upload_size_bytes,
+                        )
+        except Exception:
+            pass
+
+    # Fallback to direct multipart upload (works in dev and for <= 4.5 MB in production)
+    return UploadSessionResponse(
+        strategy="direct",
+        project_id=project_id,
+        upload_url="/api/projects/upload",
+        max_size_bytes=settings.max_upload_size_bytes,
+        message="Direct upload active (Vercel Serverless Functions limit payload to 4.5 MB in production)."
+    )
+
+
+@router.post(
+    "/upload/complete",
+    response_model=ProjectMetadata,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="upload"))],
+)
+async def complete_storage_upload(
+    request: UploadCompleteRequest,
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Complete project ingestion from an authorized object-storage reference (e.g. Vercel Blob)."""
+    parsed = urllib.parse.urlparse(request.blob_url)
+    if parsed.scheme not in ("https", "http", "file"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid blob URL scheme. Must be HTTPS.")
+
+    # In production, enforce trusted storage domains to prevent SSRF
+    if settings.environment == "production" and parsed.scheme == "https":
+        if not (parsed.netloc.endswith(".blob.vercel-storage.com") or parsed.netloc == "blob.vercel-storage.com"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Untrusted blob storage host.")
+
+    # Retrieve file bytes from storage reference
+    try:
+        if parsed.scheme == "file":
+            # Support file:// for local integration testing
+            file_path = urllib.request.url2pathname(parsed.path)
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Referenced local file does not exist: {file_path}")
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+        else:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(request.blob_url)
+                if resp.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Failed to fetch uploaded file from storage reference: HTTP {resp.status_code}"
+                    )
+                file_bytes = resp.content
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error retrieving file from object storage: {str(e)}"
+        )
+
+    project_name = request.name or "uploaded-project"
+    filename = os.path.basename(parsed.path) or "archive.zip"
+    metadata = ingest_project_archive_bytes(
+        project_id=request.project_id,
+        project_name=project_name,
+        file_bytes=file_bytes,
+        filename=filename,
+        current_user=current_user,
+    )
+
+    # Best-effort cleanup of temporary object storage
+    blob_token = settings.blob_read_write_token
+    if blob_token and parsed.scheme == "https":
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    "https://blob.vercel-storage.com/delete",
+                    headers={
+                        "Authorization": f"Bearer {blob_token}",
+                        "x-api-version": "7",
+                    },
+                    json={"urls": [request.blob_url]},
+                )
+        except Exception:
+            pass
+
+    return metadata
+
+
+@router.post(
+    "/upload",
+    response_model=ProjectMetadata,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(check_rate_limit(max_requests=settings.expensive_rate_limit_per_minute, route_scope="upload"))],
+)
+async def upload_project_archive(
+    file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Securely upload, validate, and isolate a project ZIP archive scoped to the authenticated user."""
+    file_bytes = await file.read()
+    filename = file.filename or "archive.zip"
+    project_name = name or (filename.rsplit(".", 1)[0] if filename else "untitled-project")
+    project_id = f"prj-{uuid.uuid4().hex[:8]}"
+    return ingest_project_archive_bytes(project_id, project_name, file_bytes, filename, current_user)
+
 
 @router.get("", response_model=List[ProjectSummary])
 async def list_projects(current_user: UserContext = Depends(get_current_user)):

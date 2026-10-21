@@ -131,6 +131,105 @@ export async function clearAllData() {
 /* ================= Project Ingestion & Workspace APIs ================= */
 
 export async function uploadProjectArchive(file, name, onProgress) {
+  const token = getAuthToken();
+  const headers = authHeaders({ 'Content-Type': 'application/json' });
+
+  // 1. Request an authorized upload session from backend
+  let session = null;
+  try {
+    const res = await fetch(`${BASE_URL}/projects/upload/session`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        filename: file.name,
+        file_size: file.size,
+        content_type: file.type || 'application/zip',
+        name: name || file.name.replace(/\.zip$/i, ''),
+      }),
+    });
+    if (res.ok) {
+      session = await res.json();
+    }
+  } catch (_) {
+    // Fall back to direct upload if session endpoint is unreachable
+  }
+
+  // 2. If object storage (Vercel Blob) strategy is active, upload directly to Blob storage
+  if (session && session.strategy === 'vercel_blob' && session.upload_url && session.client_token) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable) {
+            // Allocate 0-85% for direct storage upload
+            const percent = Math.round((evt.loaded / evt.total) * 85);
+            onProgress(percent);
+          }
+        };
+      }
+
+      xhr.open('PUT', session.upload_url);
+      xhr.setRequestHeader('Authorization', `Bearer ${session.client_token}`);
+      xhr.setRequestHeader('x-api-version', '7');
+      xhr.setRequestHeader('Content-Type', file.type || 'application/zip');
+
+      xhr.onload = async () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            if (onProgress) onProgress(90);
+            const data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+            const blobUrl = data.url || session.upload_url;
+
+            // Ingest project archive on backend from storage reference
+            const completeRes = await fetch(`${BASE_URL}/projects/upload/complete`, {
+              method: 'POST',
+              headers: authHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({
+                project_id: session.project_id,
+                name: name || file.name.replace(/\.zip$/i, ''),
+                blob_url: blobUrl,
+              }),
+            });
+
+            if (!completeRes.ok) {
+              const errData = await completeRes.json().catch(() => ({}));
+              throw new Error(errData.detail || `Server processing failed: ${completeRes.statusText}`);
+            }
+
+            if (onProgress) onProgress(100);
+            const metadata = await completeRes.json();
+            resolve(metadata);
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          let errorMsg = `Object storage upload failed with status ${xhr.status}`;
+          try {
+            const err = JSON.parse(xhr.responseText);
+            if (err.message) errorMsg = err.message;
+          } catch (_) {}
+          reject(new Error(errorMsg));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Network error during direct storage upload'));
+      };
+
+      xhr.send(file);
+    });
+  }
+
+  // 3. Guard against 413 on Vercel: If file exceeds 4.5 MB in production without Vercel Blob configured
+  if (file.size > 4.5 * 1024 * 1024 && import.meta.env.PROD) {
+    throw new Error(
+      `File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds Vercel Serverless Function limit of 4.5 MB. ` +
+      `To upload files up to 50 MB in production, connect Vercel Blob in your Vercel Dashboard (Storage -> Create Blob) ` +
+      `and configure BLOB_READ_WRITE_TOKEN in sentinel-backend-api Environment Variables.`
+    );
+  }
+
+  // 4. Standard direct multipart upload (for local dev or files <= 4.5 MB)
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();

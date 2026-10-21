@@ -245,3 +245,106 @@ def test_invalid_project_id_404(client):
 
     caps_res = client.get("/api/projects/prj-nonexistent/capabilities")
     assert caps_res.status_code == 404
+
+
+def test_upload_session_validation(client):
+    """Test upload session initialization and validation rules."""
+    # 1. Invalid file extension rejected
+    bad_ext = client.post(
+        "/api/projects/upload/session",
+        json={"filename": "archive.tar.gz", "file_size": 1024},
+    )
+    assert bad_ext.status_code == 400
+    assert "only .zip archives are supported" in bad_ext.json()["detail"]
+
+    # 2. File size exceeds max upload limit (50 MB)
+    too_large = client.post(
+        "/api/projects/upload/session",
+        json={"filename": "huge.zip", "file_size": 60 * 1024 * 1024},
+    )
+    assert too_large.status_code == 400
+    assert "exceeds maximum allowed upload size" in too_large.json()["detail"]
+
+    # 3. Valid session request
+    valid = client.post(
+        "/api/projects/upload/session",
+        json={"filename": "valid-app.zip", "file_size": 15 * 1024 * 1024, "name": "Large Service"},
+    )
+    assert valid.status_code == 200
+    data = valid.json()
+    assert data["project_id"].startswith("prj-")
+    assert data["strategy"] in ("direct", "vercel_blob")
+    assert data["max_size_bytes"] == settings.max_upload_size_bytes
+
+
+def test_large_zip_storage_reference_workflow_greater_than_4_5mb(client, tmp_path):
+    """Test full ingestion and project-analysis workflow for a ZIP archive > 4.5 MB."""
+    # Create a synthetic ZIP archive larger than 4.5 MB (5.2 MB)
+    large_zip_path = tmp_path / "large_service_5mb.zip"
+    padding = b"x" * (5 * 1024 * 1024)  # 5 MB uncompressed payload
+    with zipfile.ZipFile(str(large_zip_path), "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("app/main.py", "from fastapi import FastAPI\napp = FastAPI()\n\n@app.get('/items')\ndef get_items(): return []\n")
+        zf.writestr("requirements.txt", "fastapi==0.115.0\nuvicorn>=0.30.0\npydantic>=2.8.0\n")
+        zf.writestr("package.json", '{"name": "large-service", "dependencies": {"react": "^19.0.0"}}')
+        zf.writestr("data/large_asset.txt", padding)
+
+    zip_size = os.path.getsize(str(large_zip_path))
+    assert zip_size > 4.5 * 1024 * 1024, f"Test archive must be > 4.5 MB, got {zip_size} bytes"
+
+    # Ingest using object-storage reference endpoint
+    file_url = f"file:///{large_zip_path.as_posix()}"
+    complete_res = client.post(
+        "/api/projects/upload/complete",
+        json={
+            "project_id": "prj-testlarge5mb",
+            "name": "5MB Production Service",
+            "blob_url": file_url,
+        },
+    )
+    assert complete_res.status_code == 201
+    data = complete_res.json()
+    assert data["status"] == "ready"
+    assert data["name"] == "5MB Production Service"
+    assert "FastAPI" in data["detected_frameworks"]
+    assert "React" in data["detected_frameworks"]
+
+    # Verify project-analysis workflow starts successfully on the ingested > 4.5 MB project
+    proj_id = data["project_id"]
+
+    # 1. Capabilities check
+    caps_res = client.get(f"/api/projects/{proj_id}/capabilities")
+    assert caps_res.status_code == 200
+    caps = caps_res.json()
+    assert len(caps) == 5
+
+    # 2. Compatibility assessment workflow (Feature 1)
+    compat_res = client.post(f"/api/projects/{proj_id}/compatibility/assess")
+    assert compat_res.status_code == 200
+    compat_data = compat_res.json()
+    assert compat_data["project_id"] == proj_id
+    assert compat_data["overall_status"] in ("ready", "partially_ready", "incompatible")
+
+    # 3. Spec audit workflow (Feature 2)
+    audit_res = client.post(
+        f"/api/projects/{proj_id}/audit",
+        json={"requirements_text": "- Must expose GET /items endpoint\n- Must use FastAPI", "auto_detect_spec": False},
+    )
+    assert audit_res.status_code == 200
+    audit_data = audit_res.json()
+    assert audit_data["project_id"] == proj_id
+    assert len(audit_data["findings"]) >= 1
+
+
+def test_cors_allows_production_frontend(client):
+    """Verify that OPTIONS preflight allows the production frontend origin."""
+    res = client.options(
+        "/api/projects/upload",
+        headers={
+            "Origin": "https://sentinel-7f6f.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == "https://sentinel-7f6f.vercel.app"
+    assert res.headers.get("access-control-allow-credentials") == "true"
