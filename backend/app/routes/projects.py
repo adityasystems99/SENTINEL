@@ -305,31 +305,31 @@ async def complete_storage_upload(
 
     project_name = request.name or "uploaded-project"
     filename = os.path.basename(parsed.path) or "archive.zip"
-    metadata = ingest_project_archive_bytes(
-        project_id=request.project_id,
-        project_name=project_name,
-        file_bytes=file_bytes,
-        filename=filename,
-        current_user=current_user,
-    )
-
-    # Best-effort cleanup of temporary object storage
-    blob_token = settings.blob_read_write_token
-    if blob_token and parsed.scheme == "https":
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    "https://blob.vercel-storage.com/delete",
-                    headers={
-                        "Authorization": f"Bearer {blob_token}",
-                        "x-api-version": "7",
-                    },
-                    json={"urls": [request.blob_url]},
-                )
-        except Exception:
-            pass
-
-    return metadata
+    try:
+        metadata = ingest_project_archive_bytes(
+            project_id=request.project_id,
+            project_name=project_name,
+            file_bytes=file_bytes,
+            filename=filename,
+            current_user=current_user,
+        )
+        return metadata
+    finally:
+        # Best-effort cleanup of temporary object storage after both successful and failed inspections
+        blob_token = settings.blob_read_write_token
+        if blob_token and parsed.scheme == "https":
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    await client.post(
+                        "https://blob.vercel-storage.com/delete",
+                        headers={
+                            "Authorization": f"Bearer {blob_token}",
+                            "x-api-version": "7",
+                        },
+                        json={"urls": [request.blob_url]},
+                    )
+            except Exception:
+                pass
 
 
 @router.post(
