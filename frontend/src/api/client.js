@@ -2,7 +2,18 @@
  * API client for interacting with the SENTINEL FastAPI backend.
  * Provides token authentication, configurable base URL, and consistent error handling.
  */
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+function resolveApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : (trimmed + '/api');
+  }
+  return import.meta.env.PROD
+    ? 'https://sentinel-backend-api.vercel.app/api'
+    : '/api';
+}
+
+const BASE_URL = resolveApiBaseUrl();
 
 /**
  * Retrieve current client authentication token without embedding secrets into production bundles.
