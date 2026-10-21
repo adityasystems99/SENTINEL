@@ -20,6 +20,11 @@ from ..services.audit_engine import run_audit_engine
 from ..storage.project_store import project_store
 from ..auth.security import UserContext, get_current_user, verify_project_ownership
 from ..auth.rate_limiter import check_rate_limit
+import hmac
+import hashlib
+import json
+import base64
+from typing import Tuple
 import urllib.parse
 import urllib.request
 import httpx
@@ -40,6 +45,8 @@ class UploadSessionResponse(BaseModel):
     client_token: Optional[str] = None
     pathname: Optional[str] = None
     max_size_bytes: int
+    access: str = "private"
+    store_connected: bool = False
     message: Optional[str] = None
 
 class UploadCompleteRequest(BaseModel):
@@ -88,6 +95,37 @@ def get_default_capabilities(detected_frameworks: List[str]) -> List[CapabilityS
             readiness_notes="Regression test runner available.",
         ),
     ]
+
+
+def generate_vercel_blob_client_token(
+    blob_token: str,
+    pathname: str,
+    max_size_bytes: int,
+    valid_until_seconds: int = 900,
+    access: str = "private",
+) -> Tuple[str, str]:
+    """Generate scoped short-lived client upload token using HMAC-SHA256 matching Vercel Blob spec."""
+    parts = blob_token.split("_")
+    if len(parts) < 4:
+        raise ValueError("Invalid BLOB_READ_WRITE_TOKEN format. Expected vercel_blob_rw_<store_id>_<secret>")
+    store_id = parts[3]
+    valid_until_ms = int((time.time() + valid_until_seconds) * 1000)
+    payload_dict = {
+        "pathname": pathname,
+        "validUntil": valid_until_ms,
+        "maximumSizeInBytes": max_size_bytes,
+        "allowedContentTypes": ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
+        "addRandomSuffix": False,
+        "access": access,
+        "allowOverwrite": True,
+    }
+    payload_b64 = base64.b64encode(json.dumps(payload_dict, separators=(",", ":")).encode("utf-8")).decode("utf-8")
+    signature = hmac.new(blob_token.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).hexdigest()
+    inner = f"{signature}.{payload_b64}"
+    inner_b64 = base64.b64encode(inner.encode("utf-8")).decode("utf-8")
+    client_token = f"vercel_blob_client_{store_id}_{inner_b64}"
+    upload_url = f"https://blob.vercel-storage.com/?pathname={urllib.parse.quote(pathname, safe='')}"
+    return client_token, upload_url
 
 
 def ingest_project_archive_bytes(
@@ -183,34 +221,23 @@ async def create_upload_session(
     if blob_token:
         pathname = f"projects/{project_id}/{clean_filename}"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
-                    "https://blob.vercel-storage.com",
-                    headers={
-                        "Authorization": f"Bearer {blob_token}",
-                        "x-api-version": "7",
-                    },
-                    json={
-                        "type": "generate-client-token",
-                        "pathname": pathname,
-                        "validUntil": int(time.time() + 900),  # 15 minutes
-                        "maximumSizeInBytes": settings.max_upload_size_bytes,
-                        "allowedContentTypes": ["application/zip", "application/x-zip-compressed", "application/octet-stream"],
-                        "addRandomSuffix": False,
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    client_token = data.get("clientToken")
-                    if client_token:
-                        return UploadSessionResponse(
-                            strategy="vercel_blob",
-                            project_id=project_id,
-                            upload_url=f"https://blob.vercel-storage.com/{pathname}",
-                            client_token=client_token,
-                            pathname=pathname,
-                            max_size_bytes=settings.max_upload_size_bytes,
-                        )
+            client_token, upload_url = generate_vercel_blob_client_token(
+                blob_token=blob_token,
+                pathname=pathname,
+                max_size_bytes=settings.max_upload_size_bytes,
+                access="private",
+            )
+            return UploadSessionResponse(
+                strategy="vercel_blob",
+                project_id=project_id,
+                upload_url=upload_url,
+                client_token=client_token,
+                pathname=pathname,
+                max_size_bytes=settings.max_upload_size_bytes,
+                access="private",
+                store_connected=True,
+                message="Authorized private Vercel Blob session ready for direct client upload.",
+            )
         except Exception:
             pass
 
@@ -220,7 +247,9 @@ async def create_upload_session(
         project_id=project_id,
         upload_url="/api/projects/upload",
         max_size_bytes=settings.max_upload_size_bytes,
-        message="Direct upload active (Vercel Serverless Functions limit payload to 4.5 MB in production)."
+        access="direct",
+        store_connected=False,
+        message="Direct upload active (Vercel Serverless Functions limit payload to 4.5 MB in production).",
     )
 
 
@@ -254,8 +283,12 @@ async def complete_storage_upload(
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
         else:
+            headers = {}
+            blob_token = settings.blob_read_write_token
+            if blob_token:
+                headers["Authorization"] = f"Bearer {blob_token}"
             async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.get(request.blob_url)
+                resp = await client.get(request.blob_url, headers=headers)
                 if resp.status_code != 200:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,

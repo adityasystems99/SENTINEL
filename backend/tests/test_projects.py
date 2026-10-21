@@ -348,3 +348,149 @@ def test_cors_allows_production_frontend(client):
     assert res.status_code == 200
     assert res.headers.get("access-control-allow-origin") == "https://sentinel-7f6f.vercel.app"
     assert res.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_upload_session_private_blob_token_generation(client, monkeypatch):
+    """Test HMAC client token generation and private store metadata when Vercel Blob is configured."""
+    fake_token = "vercel_blob_rw_teststore123_supersecretkey999"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    res = client.post(
+        "/api/projects/upload/session",
+        json={"filename": "my_microservice.zip", "file_size": 12 * 1024 * 1024},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["strategy"] == "vercel_blob"
+    assert data["access"] == "private"
+    assert data["store_connected"] is True
+    assert data["client_token"].startswith("vercel_blob_client_teststore123_")
+    assert "blob.vercel-storage.com" in data["upload_url"]
+
+    # Decode and verify inner payload
+    import base64
+    import json
+    parts = data["client_token"].split("_")
+    encoded_inner = parts[4]
+    decoded_inner = base64.b64decode(encoded_inner).decode("utf-8")
+    sig, payload_b64 = decoded_inner.split(".")
+    payload = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
+    assert payload["access"] == "private"
+    assert payload["maximumSizeInBytes"] == settings.max_upload_size_bytes
+    assert payload["pathname"].startswith("projects/prj-")
+
+
+def test_upload_session_and_complete_authorization_required(client, monkeypatch):
+    """Test that unauthorized requests are rejected when auth is enabled."""
+    monkeypatch.setattr(settings, "auth_enabled", True)
+
+    # 1. Session endpoint requires auth
+    res_session = client.post(
+        "/api/projects/upload/session",
+        json={"filename": "test.zip", "file_size": 1024},
+    )
+    assert res_session.status_code == 401
+
+    # 2. Complete endpoint requires auth
+    res_complete = client.post(
+        "/api/projects/upload/complete",
+        json={"project_id": "prj-123", "blob_url": "file:///dummy.zip"},
+    )
+    assert res_complete.status_code == 401
+
+    # 3. Direct upload requires auth
+    res_upload = client.post(
+        "/api/projects/upload",
+        files={"file": ("test.zip", b"PK", "application/zip")},
+    )
+    assert res_upload.status_code == 401
+
+
+def test_complete_storage_upload_invalid_and_corrupt_files(client, tmp_path):
+    """Test that non-zip or corrupt files referenced from storage are rejected safely."""
+    # 1. Non-existent file
+    missing_res = client.post(
+        "/api/projects/upload/complete",
+        json={"project_id": "prj-missing", "blob_url": "file:///nonexistent/archive.zip"},
+    )
+    assert missing_res.status_code == 404
+
+    # 2. Corrupt/plain text file disguised as zip
+    bad_file = tmp_path / "not_a_zip.zip"
+    bad_file.write_bytes(b"This is plain text, not a zip archive")
+    bad_res = client.post(
+        "/api/projects/upload/complete",
+        json={"project_id": "prj-badzip", "blob_url": f"file:///{bad_file.as_posix()}"},
+    )
+    assert bad_res.status_code == 400
+    assert "invalid" in bad_res.json()["detail"].lower() or "corrupt" in bad_res.json()["detail"].lower()
+
+
+def test_complete_storage_upload_untrusted_host_ssrf_production(client, monkeypatch):
+    """Test SSRF protection rejects untrusted storage domains in production."""
+    monkeypatch.setattr(settings, "environment", "production")
+
+    # Untrusted domain
+    res = client.post(
+        "/api/projects/upload/complete",
+        json={"project_id": "prj-ssrf", "blob_url": "https://malicious-domain.com/evil.zip"},
+    )
+    assert res.status_code == 400
+    assert "Untrusted blob storage host" in res.json()["detail"]
+
+    # Invalid scheme
+    res_scheme = client.post(
+        "/api/projects/upload/complete",
+        json={"project_id": "prj-scheme", "blob_url": "ftp://blob.vercel-storage.com/archive.zip"},
+    )
+    assert res_scheme.status_code == 400
+    assert "Invalid blob URL scheme" in res_scheme.json()["detail"]
+
+
+def test_complete_storage_upload_private_blob_bearer_authorization_header(client, monkeypatch, tmp_path):
+    """Test that download requests to private storage include the Bearer authorization header."""
+    fake_token = "vercel_blob_rw_teststore123_supersecretkey999"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    # Create a small valid zip in memory
+    files = {"app.py": "print('Hello Sentinel')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    captured_headers = {}
+
+    class DummyResponse:
+        status_code = 200
+        content = zip_bytes
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            if headers:
+                captured_headers.update(headers)
+            return DummyResponse()
+
+        async def post(self, url, headers=None, json=None):
+            return DummyResponse()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    res = client.post(
+        "/api/projects/upload/complete",
+        json={
+            "project_id": "prj-private-test",
+            "name": "Private Blob Service",
+            "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-private-test/archive.zip",
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["status"] == "ready"
+    assert captured_headers.get("Authorization") == f"Bearer {fake_token}"

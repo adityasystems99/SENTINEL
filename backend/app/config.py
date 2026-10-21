@@ -4,6 +4,21 @@ import tempfile
 from typing import List, Optional
 from pydantic import BaseModel
 
+def _get_blob_token() -> Optional[str]:
+    candidates = [
+        "BLOB_READ_WRITE_TOKEN",
+        "SENTINEL_PROJECT_UPLOADS_READ_WRITE_TOKEN",
+        "SENTINEL_PROJECT_UPLOADS_BLOB_READ_WRITE_TOKEN",
+    ]
+    for key in candidates:
+        val = os.getenv(key)
+        if val and val.strip():
+            return val.strip().strip('"').strip("'")
+    for key, val in os.environ.items():
+        if key.endswith("_READ_WRITE_TOKEN") and val and val.strip():
+            return val.strip().strip('"').strip("'")
+    return None
+
 def _get_cors_origins() -> List[str]:
     raw = os.getenv("SENTINEL_CORS_ORIGINS")
     default_dev_origins = [
@@ -15,6 +30,8 @@ def _get_cors_origins() -> List[str]:
     production_origins = ["https://sentinel-7f6f.vercel.app"]
     if raw:
         origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        if "https://sentinel-7f6f.vercel.app" not in origins:
+            origins.append("https://sentinel-7f6f.vercel.app")
         # Preserve local development origins if not running in production
         if os.getenv("SENTINEL_ENV", "development").lower() != "production":
             for d in default_dev_origins:
@@ -62,7 +79,7 @@ class Settings(BaseModel):
     projects_dir: str = _get_default_projects_dir()
     
     # Upload limits
-    blob_read_write_token: Optional[str] = os.getenv("BLOB_READ_WRITE_TOKEN")
+    blob_read_write_token: Optional[str] = _get_blob_token()
     max_upload_size_bytes: int = 50 * 1024 * 1024       # 50 MB
     max_extracted_size_bytes: int = 150 * 1024 * 1024   # 150 MB
     max_archive_entries: int = 5000                     # Max files/dirs in ZIP

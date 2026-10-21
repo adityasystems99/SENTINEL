@@ -171,6 +171,8 @@ export async function uploadProjectArchive(file, name, onProgress) {
       xhr.open('PUT', session.upload_url);
       xhr.setRequestHeader('Authorization', `Bearer ${session.client_token}`);
       xhr.setRequestHeader('x-api-version', '7');
+      xhr.setRequestHeader('x-vercel-blob-access', session.access || 'private');
+      xhr.setRequestHeader('x-content-type', file.type || 'application/zip');
       xhr.setRequestHeader('Content-Type', file.type || 'application/zip');
 
       xhr.onload = async () => {
@@ -178,7 +180,7 @@ export async function uploadProjectArchive(file, name, onProgress) {
           try {
             if (onProgress) onProgress(90);
             const data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-            const blobUrl = data.url || session.upload_url;
+            const blobUrl = data.url || data.downloadUrl || session.upload_url;
 
             // Ingest project archive on backend from storage reference
             const completeRes = await fetch(`${BASE_URL}/projects/upload/complete`, {
