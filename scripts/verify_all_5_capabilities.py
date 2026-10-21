@@ -330,6 +330,15 @@ def checkout():
         )
         assert r_ssrf.status_code == 400
         print(f"  Untrusted SSRF Host rejection: HTTP {r_ssrf.status_code} ({r_ssrf.json().get('detail')})", flush=True)
+
+        # 4F: Forged / Invalid Authorization credential rejection
+        r_auth_reject = httpx.get(
+            f"{BACKEND_URL}/api/projects",
+            headers={"Authorization": "Bearer forged-or-tampered-token-xyz"},
+            timeout=10.0
+        )
+        assert r_auth_reject.status_code == 401
+        print(f"  Forged/Invalid Authorization Token: HTTP {r_auth_reject.status_code} ({r_auth_reject.json().get('detail')})", flush=True)
         results["4. Safety & Rejections"] = "PASS"
     except Exception as e:
         results["4. Safety & Rejections"] = f"FAIL: {e}"
