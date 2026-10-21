@@ -124,7 +124,7 @@ def generate_vercel_blob_client_token(
     inner = f"{signature}.{payload_b64}"
     inner_b64 = base64.b64encode(inner.encode("utf-8")).decode("utf-8")
     client_token = f"vercel_blob_client_{store_id}_{inner_b64}"
-    upload_url = f"https://blob.vercel-storage.com/?pathname={urllib.parse.quote(pathname, safe='')}"
+    upload_url = f"https://blob.vercel-storage.com/{pathname}"
     return client_token, upload_url
 
 
