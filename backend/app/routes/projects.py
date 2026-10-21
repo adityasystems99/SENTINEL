@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 import time
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from ..config import settings
 from ..models.project import (
     CapabilityStatus,
@@ -264,6 +264,7 @@ async def create_upload_session(
 )
 async def complete_storage_upload(
     request: UploadCompleteRequest,
+    response: Response,
     current_user: UserContext = Depends(get_current_user),
 ):
     """Complete project ingestion from an authorized object-storage reference (e.g. Vercel Blob)."""
@@ -308,6 +309,11 @@ async def complete_storage_upload(
 
     project_name = request.name or "uploaded-project"
     filename = os.path.basename(parsed.path) or "archive.zip"
+
+    metadata = None
+    ingestion_error = None
+    storage_cleanup_status = "skipped"
+
     try:
         metadata = ingest_project_archive_bytes(
             project_id=request.project_id,
@@ -316,11 +322,14 @@ async def complete_storage_upload(
             filename=filename,
             current_user=current_user,
         )
-        return metadata
+    except Exception as e:
+        ingestion_error = e
+        raise
     finally:
         # Best-effort cleanup of temporary object storage after both successful and failed inspections
         blob_token = settings.blob_read_write_token
         if blob_token and parsed.scheme == "https":
+            logger.info("Attempting temporary blob cleanup for project %s", request.project_id)
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     del_resp = await client.post(
@@ -331,18 +340,43 @@ async def complete_storage_upload(
                         },
                         json={"urls": [request.blob_url]},
                     )
-                    if del_resp.status_code not in (200, 204):
-                        logger.warning(
-                            "Temporary blob cleanup returned non-success status code %d for project %s",
-                            del_resp.status_code,
+                    if del_resp.status_code in (200, 204):
+                        storage_cleanup_status = "confirmed"
+                        logger.info(
+                            "Temporary blob cleanup confirmed for project %s (HTTP %d)",
                             request.project_id,
+                            del_resp.status_code,
+                        )
+                    else:
+                        storage_cleanup_status = "failed"
+                        logger.warning(
+                            "Temporary blob cleanup failed for project %s: HTTP %d",
+                            request.project_id,
+                            del_resp.status_code,
                         )
             except Exception as e:
+                storage_cleanup_status = "error"
                 logger.warning(
-                    "Temporary blob cleanup failed for project %s: %s",
+                    "Temporary blob cleanup status unknown for project %s: network error (%s)",
                     request.project_id,
                     type(e).__name__,
                 )
+        else:
+            logger.info("Temporary blob cleanup skipped for project %s: storage credentials not configured", request.project_id)
+
+        # Set safe, non-sensitive header indicating cleanup outcome
+        response.headers["x-storage-cleanup"] = storage_cleanup_status
+
+        # If ingestion had raised an HTTPException, attach header to that exception as well
+        if ingestion_error and isinstance(ingestion_error, HTTPException):
+            if ingestion_error.headers is None:
+                ingestion_error.headers = {}
+            ingestion_error.headers["x-storage-cleanup"] = storage_cleanup_status
+
+    if metadata:
+        metadata.storage_cleanup = storage_cleanup_status
+        project_store.save_project(metadata)
+        return metadata
 
 
 @router.post(

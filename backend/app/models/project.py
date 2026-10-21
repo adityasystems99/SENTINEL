@@ -32,6 +32,7 @@ class ProjectMetadata(BaseModel):
     detected_frameworks: List[str] = Field(default_factory=list)
     error_message: Optional[str] = None
     owner_id: str = "demo_user"
+    storage_cleanup: Optional[str] = None
 
 class ProjectSummary(BaseModel):
     project_id: str

@@ -7,10 +7,12 @@ import zipfile
 import pytest
 from backend.app.config import settings
 from backend.app.storage.project_store import project_store
+from backend.app.auth.rate_limiter import rate_limiter
 
 @pytest.fixture(autouse=True)
 def isolated_project_store(tmp_path):
     """Use an isolated temporary directory for project storage during tests."""
+    rate_limiter.reset()
     original_base = project_store.base_dir
     test_dir = str(tmp_path / "test_projects")
     project_store.base_dir = test_dir
@@ -496,8 +498,8 @@ def test_complete_storage_upload_private_blob_bearer_authorization_header(client
     assert captured_headers.get("Authorization") == f"Bearer {fake_token}"
 
 
-def test_complete_storage_upload_cleanup_warning_and_preservation(client, monkeypatch, caplog):
-    """Verify that failed blob cleanup logs a safe warning without masking ingestion success or failure."""
+def test_cleanup_success_triggers_and_confirms(client, monkeypatch, caplog):
+    """1 & 3: Successful ingestion triggers cleanup and is recorded as confirmed."""
     import logging
     import httpx
     from backend.app.config import settings
@@ -510,13 +512,62 @@ def test_complete_storage_upload_cleanup_warning_and_preservation(client, monkey
 
     delete_called = False
 
-    class DummyGetResponse:
-        status_code = 200
-        content = zip_bytes
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
 
-    class DummyDeleteFailResponse:
-        status_code = 500
-        text = "Internal Blob Error"
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            nonlocal delete_called
+            if "delete" in url:
+                delete_called = True
+                class R:
+                    status_code = 200
+                    text = '{"deleted": ["..."]}'
+                return R()
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.INFO):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-cleanup-success",
+                "name": "Success Cleanup Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-success/archive.zip",
+            },
+        )
+
+    assert res.status_code == 201
+    assert res.json()["status"] == "ready"
+    assert res.json()["storage_cleanup"] == "confirmed"
+    assert res.headers.get("x-storage-cleanup") == "confirmed"
+    assert delete_called is True
+    assert any("Temporary blob cleanup confirmed" in r.message for r in caplog.records)
+
+
+def test_cleanup_failed_ingestion_still_triggers_cleanup(client, monkeypatch, caplog):
+    """2: Failed ingestion still triggers cleanup and preserves original 400 error."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    fake_token = "vercel_blob_rw_teststore123_supersecretkey999"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    delete_called = False
 
     class MockAsyncClient:
         def __init__(self, *args, **kwargs):
@@ -529,14 +580,74 @@ def test_complete_storage_upload_cleanup_warning_and_preservation(client, monkey
             pass
 
         async def get(self, url, headers=None):
-            return DummyGetResponse()
+            class R:
+                status_code = 200
+                content = b"NOT_A_VALID_ZIP_HEADER"
+            return R()
 
         async def post(self, url, headers=None, json=None):
             nonlocal delete_called
             if "delete" in url:
                 delete_called = True
-                return DummyDeleteFailResponse()
-            return DummyGetResponse()
+                class R:
+                    status_code = 200
+                    text = '{"deleted": ["..."]}'
+                return R()
+            return None
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.INFO):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-cleanup-corrupt",
+                "name": "Corrupt Cleanup Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-corrupt/archive.zip",
+            },
+        )
+
+    # Ingestion fails safely with original error preserved
+    assert res.status_code == 400
+    assert "Corrupt or invalid ZIP archive header" in res.json()["detail"]
+    assert delete_called is True
+    assert res.headers.get("x-storage-cleanup") == "confirmed"
+    assert any("Temporary blob cleanup confirmed" in r.message for r in caplog.records)
+
+
+def test_cleanup_non_success_response_produces_safe_warning(client, monkeypatch, caplog):
+    """4: Non-success deletion responses produce a safe warning without crashing."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    fake_token = "vercel_blob_rw_teststore123_SECRET_KEY_NEVER_LOG"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 500
+                text = "Blob Storage Internal Error"
+            return R()
 
     monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
 
@@ -544,18 +655,219 @@ def test_complete_storage_upload_cleanup_warning_and_preservation(client, monkey
         res = client.post(
             "/api/projects/upload/complete",
             json={
-                "project_id": "prj-cleanup-warning-test",
-                "name": "Cleanup Warning Test",
-                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-warning-test/archive.zip",
+                "project_id": "prj-cleanup-500",
+                "name": "Failed Delete Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-500/archive.zip",
             },
         )
 
-    # 1. Ingestion still succeeds (best-effort cleanup preserved)
     assert res.status_code == 201
-    assert res.json()["status"] == "ready"
-    assert delete_called is True
+    assert res.json()["storage_cleanup"] == "failed"
+    assert res.headers.get("x-storage-cleanup") == "failed"
+    warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Temporary blob cleanup failed for project prj-cleanup-500: HTTP 500" in m for m in warning_msgs)
+    assert not any("SECRET_KEY_NEVER_LOG" in m for m in warning_msgs)
 
-    # 2. Safe warning logged without exposing secrets
-    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("Temporary blob cleanup returned non-success status code 500" in r.message for r in warning_records)
-    assert not any(fake_token in r.message for r in warning_records)
+
+def test_cleanup_network_error_handled_without_masking_ingestion(client, monkeypatch, caplog):
+    """5: Network errors during deletion are handled safely without masking result."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    fake_token = "vercel_blob_rw_teststore123_SECRET_TOKEN_XYZ"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            raise httpx.ConnectError("Network partition unreachable")
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.WARNING):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-cleanup-network-err",
+                "name": "Network Err Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-network-err/archive.zip",
+            },
+        )
+
+    assert res.status_code == 201
+    assert res.json()["storage_cleanup"] == "error"
+    assert res.headers.get("x-storage-cleanup") == "error"
+    warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("network error (ConnectError)" in m for m in warning_msgs)
+
+
+def test_cleanup_missing_credentials_handled_safely(client, monkeypatch, caplog):
+    """6: Missing Blob credentials are handled safely and logged as skipped."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    monkeypatch.setattr(settings, "blob_read_write_token", "")
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            pytest.fail("post should not be called when credentials are missing")
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.INFO):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-cleanup-no-creds",
+                "name": "No Creds Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-no-creds/archive.zip",
+            },
+        )
+
+    assert res.status_code == 201
+    assert res.json()["storage_cleanup"] == "skipped"
+    assert res.headers.get("x-storage-cleanup") == "skipped"
+    assert any("credentials not configured" in r.message for r in caplog.records)
+
+
+def test_cleanup_logs_never_expose_secrets_or_signed_urls(client, monkeypatch, caplog):
+    """7: Logs never expose tokens, credentials, or sensitive headers."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    secret_key_val = "SECRET_TOKEN_DO_NOT_LEAK_INTO_LOGS_999"
+    fake_token = f"vercel_blob_rw_teststore123_{secret_key_val}"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 503
+                text = "Service Unavailable"
+            return R()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.DEBUG):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-secrets-check",
+                "name": "Secrets Check",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-secrets-check/archive.zip?token=sensitive_query_param",
+            },
+        )
+
+    assert res.status_code == 201
+    all_logs = " ".join([r.message for r in caplog.records])
+    assert secret_key_val not in all_logs
+    assert fake_token not in all_logs
+    assert "sensitive_query_param" not in all_logs
+
+
+def test_cleanup_not_confirmed_when_unverified(client, monkeypatch, caplog):
+    """8: Cleanup is never reported as confirmed when deletion could not be verified."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    fake_token = "vercel_blob_rw_teststore123_token"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = zip_bytes
+            return R()
+
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 404
+                text = "Not found"
+            return R()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.INFO):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-unverified-check",
+                "name": "Unverified Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-unverified-check/archive.zip",
+            },
+        )
+
+    assert res.status_code == 201
+    assert res.json()["storage_cleanup"] == "failed"
+    assert res.json()["storage_cleanup"] != "confirmed"
+    assert not any("Temporary blob cleanup confirmed" in r.message for r in caplog.records)
