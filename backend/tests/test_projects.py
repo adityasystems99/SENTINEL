@@ -985,3 +985,41 @@ def test_cleanup_ingestion_and_cleanup_both_fail(client, monkeypatch, caplog):
     warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert any("Temporary blob cleanup failed for project prj-both-fail: HTTP 502" in m for m in warning_msgs)
     assert not any("SECRET_KEY" in m for m in warning_msgs)
+
+
+def test_prohibited_executable_sab_proctor_rejected(client):
+    """Regression test: verify sabtool_win8_10_11_v170530/SAB-Proctor.exe is rejected with clear security error."""
+    files = {
+        "sabtool_win8_10_11_v170530/SAB-Proctor.exe": b"MZ\x90\x00PE32_BINARY_DATA",
+        "sabtool_win8_10_11_v170530/readme.txt": "Safe Assessment Browser Proctoring Tool",
+    }
+    zip_buf = create_in_memory_zip(files)
+
+    response = client.post(
+        "/api/projects/upload",
+        files={"file": ("sabtool_win8_10_11_v170530.zip", zip_buf, "application/zip")},
+    )
+    assert response.status_code == 400
+    assert "Prohibited executable binary entry" in response.json()["detail"]
+    assert "SAB-Proctor.exe" in response.json()["detail"]
+    assert "SENTINEL only analyzes source code repositories" in response.json()["detail"]
+
+
+def test_harmless_source_zip_upload_succeeds(client):
+    """Regression test: verify harmless source-code archive with Python, JS, and docs succeeds."""
+    files = {
+        "main.py": "from fastapi import FastAPI\napp = FastAPI()\n",
+        "requirements.txt": "fastapi>=0.100.0\nuvicorn>=0.22.0\n",
+        "README.md": "# Harmless Project\nValid source code.\n",
+    }
+    zip_buf = create_in_memory_zip(files)
+
+    response = client.post(
+        "/api/projects/upload",
+        files={"file": ("harmless_project.zip", zip_buf, "application/zip")},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "ready"
+    assert data["file_count"] == 3
+    assert "FastAPI" in data["detected_frameworks"]

@@ -546,13 +546,20 @@ export default function ProjectEntry({
                 color: '#f87171',
                 fontSize: '0.86rem',
                 display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
+                flexDirection: 'column',
+                gap: '6px',
                 marginBottom: '20px',
               }}
             >
-              <AlertCircle size={18} />
-              <span>{errorMessage}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                <span>{errorMessage}</span>
+              </div>
+              {errorMessage.includes('Prohibited executable binary') && (
+                <div style={{ fontSize: '0.78rem', color: '#fca5a5', paddingLeft: '28px', lineHeight: 1.4 }}>
+                  SENTINEL is an automated source-code intelligence platform. Precompiled binary executables (.exe, .dll, etc.) cannot be parsed as source code and are blocked by security policy. Please remove executable binaries from your project archive before uploading.
+                </div>
+              )}
             </div>
           )}
 

@@ -159,7 +159,7 @@ def extract_archive_safely(file_bytes: bytes, target_dir: str) -> Dict:
             # Prohibited executable / binary check
             _, ext = os.path.splitext(name.lower())
             if ext in settings.prohibited_extensions:
-                raise ValueError(f"Security error: Prohibited executable binary entry '{name}' detected")
+                raise ValueError(f"Security error: Prohibited executable binary entry '{name}' detected. SENTINEL only analyzes source code repositories; compiled binaries ({', '.join(settings.prohibited_extensions)}) are prohibited.")
 
         # 4. Second pass: Extract non-excluded entries
         for entry in entries:
