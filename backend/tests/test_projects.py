@@ -871,3 +871,117 @@ def test_cleanup_not_confirmed_when_unverified(client, monkeypatch, caplog):
     assert res.json()["storage_cleanup"] == "failed"
     assert res.json()["storage_cleanup"] != "confirmed"
     assert not any("Temporary blob cleanup confirmed" in r.message for r in caplog.records)
+
+
+def test_complete_storage_upload_unsupported_file_type(client, monkeypatch):
+    """3. Unsupported file type from storage reference is rejected with 400."""
+    import httpx
+    from backend.app.config import settings
+    monkeypatch.setattr(settings, "blob_read_write_token", "vercel_blob_rw_test_token")
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = b"Some tar or text content"
+            return R()
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 200
+                text = "{}"
+            return R()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    res = client.post(
+        "/api/projects/upload/complete",
+        json={
+            "project_id": "prj-unsupported-type",
+            "name": "Unsupported Type Test",
+            "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-unsupported-type/archive.tar.gz",
+        },
+    )
+    assert res.status_code == 400
+    assert "Invalid file type: only .zip archives are supported" in res.json()["detail"]
+    assert res.headers.get("x-storage-cleanup") == "confirmed"
+
+
+def test_complete_storage_upload_retrieval_failure(client, monkeypatch):
+    """5. Storage retrieval failure returns 400 without masking."""
+    import httpx
+    from backend.app.config import settings
+    monkeypatch.setattr(settings, "blob_read_write_token", "vercel_blob_rw_test_token")
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 404
+                content = b"Blob Not Found"
+            return R()
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 200
+                text = "{}"
+            return R()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    res = client.post(
+        "/api/projects/upload/complete",
+        json={
+            "project_id": "prj-fetch-fail",
+            "name": "Fetch Failure Test",
+            "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-fetch-fail/archive.zip",
+        },
+    )
+    assert res.status_code == 400
+    assert "Failed to fetch uploaded file from storage reference: HTTP 404" in res.json()["detail"]
+
+
+def test_cleanup_ingestion_and_cleanup_both_fail(client, monkeypatch, caplog):
+    """8. Both ingestion failure and cleanup failure: original 400 preserved, cleanup marked failed, warning logged."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+    fake_token = "vercel_blob_rw_teststore123_SECRET_KEY"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, url, headers=None):
+            class R:
+                status_code = 200
+                content = b"CORRUPTED_NOT_A_ZIP_CONTENT"
+            return R()
+        async def post(self, url, headers=None, json=None):
+            class R:
+                status_code = 502
+                text = "Bad Gateway"
+            return R()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.WARNING):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-both-fail",
+                "name": "Both Fail Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-both-fail/archive.zip",
+            },
+        )
+
+    assert res.status_code == 400
+    assert "Corrupt or invalid ZIP archive header" in res.json()["detail"]
+    assert res.headers.get("x-storage-cleanup") == "failed"
+    warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Temporary blob cleanup failed for project prj-both-fail: HTTP 502" in m for m in warning_msgs)
+    assert not any("SECRET_KEY" in m for m in warning_msgs)
