@@ -12,7 +12,6 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
     );
   }
 
-  // Simple layout: arrange nodes in layers by service or timestamp
   const width = 720;
   const height = 360;
   const padding = 60;
@@ -38,22 +37,31 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
   });
 
   return (
-    <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
+    <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px', border: '1px solid rgba(0, 242, 254, 0.15)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <GitGraph size={18} color="#3b82f6" />
+          <GitGraph size={18} color="var(--accent-cyan)" />
           <h3 style={{ fontSize: '1rem', fontWeight: '700' }}>NetworkX Incident Topology Graph</h3>
         </div>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
           {nodes.length} nodes · {edges.length} causal edges
         </span>
       </div>
 
-      <div style={{ position: 'relative', background: 'rgba(0, 0, 0, 0.4)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+      <div
+        style={{
+          position: 'relative',
+          background: 'radial-gradient(circle at center, #0e1526 0%, #060913 100%)',
+          borderRadius: '12px',
+          border: '1px solid rgba(115, 217, 245, 0.18)',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 0 30px rgba(0,0,0,0.6)',
+        }}
+      >
         <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.4)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(115, 217, 245, 0.4)" />
             </marker>
             <marker id="arrow-error" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
@@ -68,16 +76,17 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
                 y1={20}
                 x2={serviceXMap[svc]}
                 y2={height - 20}
-                stroke="rgba(255,255,255,0.05)"
+                stroke="rgba(115, 217, 245, 0.08)"
                 strokeDasharray="4 4"
               />
               <text
                 x={serviceXMap[svc]}
                 y={25}
-                fill="var(--text-muted)"
+                fill="var(--text-secondary)"
                 fontSize="11"
                 textAnchor="middle"
-                fontWeight="600"
+                fontWeight="700"
+                fontFamily="var(--font-mono)"
               >
                 {svc}
               </text>
@@ -91,7 +100,7 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
             if (!src || !dst) return null;
 
             const isErrorEdge = e.relation.includes('failure') || e.relation.includes('error');
-            const strokeColor = isErrorEdge ? '#ef4444' : 'rgba(255, 255, 255, 0.25)';
+            const strokeColor = isErrorEdge ? '#ef4444' : 'rgba(115, 217, 245, 0.35)';
 
             return (
               <line
@@ -116,7 +125,7 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
             const isError = n.is_error;
             const isDeploy = n.event_type === 'deployment';
 
-            const fillColor = isDeploy ? '#f59e0b' : isError ? '#ef4444' : '#3b82f6';
+            const fillColor = isDeploy ? '#f59e0b' : isError ? '#ef4444' : '#00f2fe';
 
             return (
               <g
@@ -125,11 +134,18 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
                 onClick={() => setSelectedNode(n)}
                 style={{ cursor: 'pointer' }}
               >
+                {/* Glow ring */}
                 <circle
-                  r={isSelected ? 14 : 10}
+                  r={isSelected ? 16 : 12}
                   fill={fillColor}
-                  fillOpacity={0.85}
-                  stroke={isSelected ? '#ffffff' : 'rgba(255,255,255,0.3)'}
+                  fillOpacity={0.2}
+                  filter="blur(2px)"
+                />
+                <circle
+                  r={isSelected ? 13 : 9}
+                  fill={fillColor}
+                  fillOpacity={0.9}
+                  stroke={isSelected ? '#ffffff' : 'rgba(255,255,255,0.4)'}
                   strokeWidth={isSelected ? 3 : 1.5}
                 />
                 <title>{`[${n.service}] ${n.message}`}</title>
@@ -146,14 +162,15 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
               bottom: '12px',
               left: '12px',
               right: '12px',
-              background: 'rgba(15, 23, 42, 0.95)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              padding: '10px 14px',
+              background: 'rgba(6, 9, 19, 0.95)',
+              border: '1px solid rgba(0, 242, 254, 0.3)',
+              borderRadius: '10px',
+              padding: '12px 16px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              backdropFilter: 'blur(8px)',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
             }}
           >
             <div>
@@ -161,7 +178,7 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
                 <span className={`badge ${selectedNode.is_error ? 'badge-critical' : 'badge-medium'}`}>
                   {selectedNode.level}
                 </span>
-                <strong style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                <strong style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
                   [{selectedNode.service}]
                 </strong>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -174,7 +191,14 @@ export default function IncidentGraph({ nodes = [], edges = [] }) {
             </div>
             <button
               onClick={() => setSelectedNode(null)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '4px' }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                padding: '4px 8px',
+              }}
             >
               ✕
             </button>

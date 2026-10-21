@@ -7,6 +7,7 @@ import CompatibilityWorkspace from './components/workspaces/CompatibilityWorkspa
 import PromiseAuditWorkspace from './components/workspaces/PromiseAuditWorkspace';
 import DependencyRadarWorkspace from './components/workspaces/DependencyRadarWorkspace';
 import FixValidationWorkspace from './components/workspaces/FixValidationWorkspace';
+import ParticleVortex from './components/ParticleVortex';
 import {
   fetchHealth,
   fetchIncidents,
@@ -43,10 +44,8 @@ export default function App() {
         if (projList && projList.length > 0) {
           const firstProj = await fetchProjectMetadata(projList[0].project_id).catch(() => null);
           setActiveProject(firstProj);
-          // If project exists, start at dashboard
           setCurrentView('dashboard');
         } else {
-          // Greenfield: start at Project Entry
           setCurrentView('entry');
         }
       } catch (err) {
@@ -121,12 +120,12 @@ export default function App() {
     }
   };
 
-  // 1. Loading Page
+  // 1. Loading Page (features hero particle vortex)
   if (currentView === 'loading') {
     return <LoadingScreen message="Initializing SENTINEL Intelligence Engine & Workspaces..." />;
   }
 
-  // 2. Project Entry Page
+  // 2. Project Entry Page (features hero particle vortex & START A PROJECT)
   if (currentView === 'entry') {
     return (
       <ProjectEntry
@@ -137,76 +136,64 @@ export default function App() {
     );
   }
 
-  // 3. Five-Feature Dashboard
-  if (currentView === 'dashboard') {
-    return (
-      <FiveFeatureDashboard
-        project={activeProject}
-        onSelectFeature={(featureId) => setCurrentView(`workspace-${featureId}`)}
-        onBackToEntry={() => setCurrentView('entry')}
-      />
-    );
-  }
-
-  // 4. Feature Workspaces
-  if (currentView === 'workspace-incidents') {
-    return (
-      <LiveIncidentWorkspace
-        project={activeProject}
-        incidents={incidents}
-        selectedIncident={selectedIncident}
-        selectedIncidentId={selectedIncidentId}
-        onSelectIncident={handleSelectIncident}
-        onAnalyze={handleManualAnalyze}
-        isAnalyzing={isAnalyzing}
-        onRefresh={refreshIncidentData}
-        isRefreshing={isRefreshing}
-        onBackToDashboard={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
-  if (currentView === 'workspace-compatibility') {
-    return (
-      <CompatibilityWorkspace
-        project={activeProject}
-        onBackToDashboard={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
-  if (currentView === 'workspace-promise_audit') {
-    return (
-      <PromiseAuditWorkspace
-        project={activeProject}
-        onBackToDashboard={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
-  if (currentView === 'workspace-dependency_radar') {
-    return (
-      <DependencyRadarWorkspace
-        project={activeProject}
-        onBackToDashboard={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
-  if (currentView === 'workspace-fix_validation') {
-    return (
-      <FixValidationWorkspace
-        project={activeProject}
-        onBackToDashboard={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
+  // Operational experience wrapper with ambient background particle atmosphere
   return (
-    <FiveFeatureDashboard
-      project={activeProject}
-      onSelectFeature={(featureId) => setCurrentView(`workspace-${featureId}`)}
-      onBackToEntry={() => setCurrentView('entry')}
-    />
+    <div style={{ position: 'relative', minHeight: '100vh', width: '100%' }}>
+      {/* Subtle ambient 3D particle vortex backdrop */}
+      <ParticleVortex mode="ambient" />
+
+      {/* 3. Five-Feature Dashboard */}
+      {currentView === 'dashboard' && (
+        <FiveFeatureDashboard
+          project={activeProject}
+          onSelectFeature={(featureId) => setCurrentView(`workspace-${featureId}`)}
+          onBackToEntry={() => setCurrentView('entry')}
+        />
+      )}
+
+      {/* 4. Feature Workspaces */}
+      {currentView === 'workspace-incidents' && (
+        <LiveIncidentWorkspace
+          project={activeProject}
+          incidents={incidents}
+          selectedIncident={selectedIncident}
+          selectedIncidentId={selectedIncidentId}
+          onSelectIncident={handleSelectIncident}
+          onAnalyze={handleManualAnalyze}
+          isAnalyzing={isAnalyzing}
+          onRefresh={refreshIncidentData}
+          isRefreshing={isRefreshing}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
+
+      {currentView === 'workspace-compatibility' && (
+        <CompatibilityWorkspace
+          project={activeProject}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
+
+      {currentView === 'workspace-promise_audit' && (
+        <PromiseAuditWorkspace
+          project={activeProject}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
+
+      {currentView === 'workspace-dependency_radar' && (
+        <DependencyRadarWorkspace
+          project={activeProject}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
+
+      {currentView === 'workspace-fix_validation' && (
+        <FixValidationWorkspace
+          project={activeProject}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
+    </div>
   );
 }

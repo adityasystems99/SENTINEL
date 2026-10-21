@@ -1,16 +1,17 @@
 import React from 'react';
 import { ArrowRight, Loader2 } from 'lucide-react';
 
-export default function StartProjectButton({ onClick, disabled, loading }) {
+export default function StartProjectButton({ onClick, disabled, loading, label = 'START A PROJECT' }) {
   return (
     <button
       type="button"
       className="start-project-btn"
       onClick={onClick}
       disabled={disabled || loading}
-      aria-label="Start Project"
+      aria-label="START PROJECT"
+      title={label}
     >
-      {/* 34px circular dark icon disc containing centered arrow and animated ring */}
+      {/* Circular dark icon disc containing centered arrow and animated cyber ring */}
       <span className="start-icon-disc">
         {/* Masked Conic Gradient Ring */}
         <span className="start-project-ring" aria-hidden="true" />
@@ -18,7 +19,7 @@ export default function StartProjectButton({ onClick, disabled, loading }) {
         {/* Centered arrow above the ring at z-index: 2 */}
         <span className="start-arrow">
           {loading ? (
-            <Loader2 size={16} className="spin" color="var(--accent)" />
+            <Loader2 size={16} className="spin" color="var(--accent-cyan)" />
           ) : (
             <ArrowRight size={17} strokeWidth={2.5} />
           )}
@@ -26,7 +27,7 @@ export default function StartProjectButton({ onClick, disabled, loading }) {
       </span>
 
       {/* Uppercase, widely spaced monospace label */}
-      <span>{loading ? 'INITIALIZING...' : 'START PROJECT'}</span>
+      <span>{loading ? 'INITIALIZING...' : label}</span>
     </button>
   );
 }
