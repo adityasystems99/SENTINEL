@@ -494,3 +494,68 @@ def test_complete_storage_upload_private_blob_bearer_authorization_header(client
     assert res.status_code == 201
     assert res.json()["status"] == "ready"
     assert captured_headers.get("Authorization") == f"Bearer {fake_token}"
+
+
+def test_complete_storage_upload_cleanup_warning_and_preservation(client, monkeypatch, caplog):
+    """Verify that failed blob cleanup logs a safe warning without masking ingestion success or failure."""
+    import logging
+    import httpx
+    from backend.app.config import settings
+
+    fake_token = "vercel_blob_rw_teststore123_supersecretkey999"
+    monkeypatch.setattr(settings, "blob_read_write_token", fake_token)
+
+    files = {"main.py": "print('ok')"}
+    zip_bytes = create_in_memory_zip(files).getvalue()
+
+    delete_called = False
+
+    class DummyGetResponse:
+        status_code = 200
+        content = zip_bytes
+
+    class DummyDeleteFailResponse:
+        status_code = 500
+        text = "Internal Blob Error"
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, headers=None):
+            return DummyGetResponse()
+
+        async def post(self, url, headers=None, json=None):
+            nonlocal delete_called
+            if "delete" in url:
+                delete_called = True
+                return DummyDeleteFailResponse()
+            return DummyGetResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+
+    with caplog.at_level(logging.WARNING):
+        res = client.post(
+            "/api/projects/upload/complete",
+            json={
+                "project_id": "prj-cleanup-warning-test",
+                "name": "Cleanup Warning Test",
+                "blob_url": "https://teststore123.private.blob.vercel-storage.com/projects/prj-cleanup-warning-test/archive.zip",
+            },
+        )
+
+    # 1. Ingestion still succeeds (best-effort cleanup preserved)
+    assert res.status_code == 201
+    assert res.json()["status"] == "ready"
+    assert delete_called is True
+
+    # 2. Safe warning logged without exposing secrets
+    warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("Temporary blob cleanup returned non-success status code 500" in r.message for r in warning_records)
+    assert not any(fake_token in r.message for r in warning_records)

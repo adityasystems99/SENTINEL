@@ -1,5 +1,8 @@
 """Project ingestion, metadata, and workspace API routes."""
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 import time
 import uuid
 from typing import List, Optional
@@ -320,7 +323,7 @@ async def complete_storage_upload(
         if blob_token and parsed.scheme == "https":
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
+                    del_resp = await client.post(
                         "https://blob.vercel-storage.com/delete",
                         headers={
                             "Authorization": f"Bearer {blob_token}",
@@ -328,8 +331,18 @@ async def complete_storage_upload(
                         },
                         json={"urls": [request.blob_url]},
                     )
-            except Exception:
-                pass
+                    if del_resp.status_code not in (200, 204):
+                        logger.warning(
+                            "Temporary blob cleanup returned non-success status code %d for project %s",
+                            del_resp.status_code,
+                            request.project_id,
+                        )
+            except Exception as e:
+                logger.warning(
+                    "Temporary blob cleanup failed for project %s: %s",
+                    request.project_id,
+                    type(e).__name__,
+                )
 
 
 @router.post(
