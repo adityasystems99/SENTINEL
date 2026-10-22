@@ -29,12 +29,12 @@ export default function LandingPage({ onLaunchConsole }) {
 
     // 2. Platform horizontal scroll
     const plat = [
-      ['01', 'TOPOLOGY', 'Live Incident Mesh', 'Explore distributed causal graphs and real-time telemetry topology.', 'p-mesh'],
-      ['02', 'MODELS', 'Model-Agnostic RAG', 'Index runbooks and post-mortems with hybrid semantic search.', 'p-models'],
-      ['03', 'REVIEW', 'Human Checkpoints', 'Pause automated remediation for human validation before production mutations.', 'p-checkpoints'],
-      ['04', 'EDGE', 'Edge Ingestion', 'Sub-20ms streaming telemetry ingest for OpenTelemetry spans and logs.', 'p-edge'],
-      ['05', 'RADAR', 'Architectural Radar', 'Map service dependencies and pinpoint risk hotspots before release.', 'p-versions'],
-      ['06', 'TRUST', 'SOC 2 & Code Audits', 'Automated binary inspection, tenant isolation, and verified audit trails.', 'p-trust']
+      ['01', 'TOPOLOGY', 'Live Incident Mesh', 'Construct real-time causal graphs across microservices, tracking failure propagation and blast radius.', 'p-mesh'],
+      ['02', 'RADAR', 'Dependency & Impact Radar', 'Continuous static AST dependency mapping to predict blast radius and risky coupling before deploy.', 'p-versions'],
+      ['03', 'VALIDATION', 'Controlled Fix Validation', 'Simulate pre-deploy failure scenarios and enforce human checkpoint approvals before code mutates production.', 'p-checkpoints'],
+      ['04', 'INGESTION', 'Zero-Overhead Telemetry', 'Sub-20ms streaming ingestion for OpenTelemetry traces, spans, metrics, and audit logs with tenant isolation.', 'p-edge'],
+      ['05', 'AUDIT', 'Promise vs Reality Code Audit', 'Automated AST inspection, contract conformance testing, and prohibited executable sandbox security scans.', 'p-trust'],
+      ['06', 'RAG', 'Semantic Runbook Engine', 'Hybrid vector and keyword retrieval across historical post-mortems and automated remediation runbooks.', 'p-models']
     ];
     const track = $('#track');
     if (track) {
@@ -54,7 +54,7 @@ export default function LandingPage({ onLaunchConsole }) {
 
     const chart = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><path class="hl" d="M40 240H370M40 180H370M40 120H370M40 60H370"/><path class="chart" pathLength="100" d="M40 70 C100 60 120 90 170 110 S250 190 370 225"/></svg><span class="pl" style="right:12%;bottom:22%">−63% MTTR</span>';
 
-    const gauge = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><circle cx="200" cy="140" r="64" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/><circle id="gc" cx="200" cy="140" r="64" fill="none" stroke="#ff7a3d" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 200 140)"/><text id="gt" x="200" y="148" text-anchor="middle" fill="#f2eff7" font-size="30" font-family="Geist" font-weight="500">0%</text><text x="200" y="232" text-anchor="middle" fill="#8d879a" font-size="11" font-family="Geist Mono" letter-spacing="1.5">BUDGET USED · CAP $500</text></svg><span class="pl" style="left:10%;bottom:8%">PII ✓</span><span class="pl" style="left:38%;bottom:8%">SPEND ✓</span><span class="pl" style="left:68%;bottom:8%;color:#a58bff">REVIEW 2</span>';
+    const gauge = '<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><circle cx="200" cy="140" r="64" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="10"/><circle id="gc" cx="200" cy="140" r="64" fill="none" stroke="#ff7a3d" stroke-width="10" stroke-linecap="round" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 200 140)"/><text id="gt" x="200" y="148" text-anchor="middle" fill="#f2eff7" font-size="30" font-family="Geist" font-weight="500">0%</text><text x="200" y="232" text-anchor="middle" fill="#8d879a" font-size="11" font-family="Geist Mono" letter-spacing="1.5">GUARDRAIL QUOTA · 100% SECURE</text></svg><span class="pl" style="left:10%;bottom:8%">PII ✓</span><span class="pl" style="left:38%;bottom:8%">ACCESS ✓</span><span class="pl" style="left:68%;bottom:8%;color:#a58bff">REVIEW 2</span>';
 
     const tl = `<svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${[
       [50, 160, '#ff7a3d'],
@@ -65,10 +65,10 @@ export default function LandingPage({ onLaunchConsole }) {
     ].map((b, i) => `<rect x="${60 + b[0] * 0.6}" y="${70 + i * 34}" width="${b[1]}" height="16" rx="8" fill="${b[2]}" opacity=".75"/>`).join('')}<g class="scrub"><rect x="60" y="56" width="2" height="190" fill="#fff"/></g></svg>`;
 
     const steps = [
-      ['01', 'Connect', 'Plug in the agents and telemetry you already run.', 's-connect', hub],
-      ['02', 'Route', 'Context and traces travel with the task.', 's-route', chart],
-      ['03', 'Guard', 'Policies and boundaries at every hop.', 's-guard', gauge],
-      ['04', 'Trace', 'Replay any incident, step by step.', 's-trace', tl]
+      ['01', 'Ingest', 'Connect your telemetry and codebases.', 's-connect', hub],
+      ['02', 'Correlate', 'Construct dynamic causal graphs.', 's-route', chart],
+      ['03', 'Guard', 'Enforce contract & safety guardrails.', 's-guard', gauge],
+      ['04', 'Resolve', 'Time-travel replay and validated fix.', 's-trace', tl]
     ];
     const stack = $('#stack');
     if (stack) {
@@ -78,7 +78,7 @@ export default function LandingPage({ onLaunchConsole }) {
     }
 
     // 4. Reveal words
-    const words = 'Distributed systems are getting more complex every month. The gaps between them are where work quietly breaks. SENTINEL closes those gaps.'.split(' ');
+    const words = 'Distributed systems are getting more complex every month. The gaps between them are where outages quietly breed. SENTINEL closes those gaps.'.split(' ');
     const revp = $('#revp');
     if (revp) {
       revp.innerHTML = words.map((w) => `<span class="w${w === 'between' ? ' serif' : ''}">${w}</span>`).join(' ');
@@ -87,8 +87,8 @@ export default function LandingPage({ onLaunchConsole }) {
     // 5. Stats
     const sd = [
       [18, 'ms', 'median triage latency', 0],
-      [2.4, 'B', 'telemetry events routed', 1],
-      [61, '%', 'fewer failed runs', 0],
+      [2.4, 'B', 'telemetry events ingested', 1],
+      [61, '%', 'reduction in MTTR', 0],
       [900, '+', 'teams in beta', 0]
     ];
     const sg = $('#sg');
@@ -101,10 +101,10 @@ export default function LandingPage({ onLaunchConsole }) {
 
     // 6. Hero 3D flow window
     const NODES = [
-      ['Anomaly detected', 'telemetry ingest', 7, 52],
-      ['Root cause ranked', 'causal graph', 38, 30],
-      ['Runbook generated', 'writer agent', 38, 74],
-      ['Ask a human', 'waiting · 2 min', 70, 52, 1]
+      ['Telemetry Ingest', 'OTel spans & logs', 7, 52],
+      ['Causal Correlator', 'NetworkX graph', 38, 30],
+      ['Root-Cause Ranker', 'probabilistic rank', 38, 74],
+      ['Fix Guardrail', 'awaiting approval · 2 min', 70, 52, 1]
     ];
     const fb = $('#fbody');
     const cards = [];
@@ -129,7 +129,7 @@ export default function LandingPage({ onLaunchConsole }) {
 
     const routes = [[0, 1, 3], [0, 2, 3]];
     let ri = 0, si = 0;
-    const tix = ['db-deadlock', 'login-loop', 'billing-dispute', 'api-timeout', 'pod-eviction'];
+    const tix = ['db-deadlock', 'auth-latency', 'memory-leak', 'api-timeout', 'pod-eviction'];
     let runs = [], tk = 4410;
 
     function setOn(i) {
@@ -154,7 +154,7 @@ export default function LandingPage({ onLaunchConsole }) {
         const c2 = $('#c2');
         if (c2) c2.textContent = ms;
         const c1 = $('#c1');
-        if (c1) c1.textContent = (1284 + tk - 4410).toLocaleString('en-US');
+        if (c1) c1.textContent = (2410 + tk - 4410).toLocaleString('en-US');
       }
     }
 
@@ -1088,7 +1088,7 @@ export default function LandingPage({ onLaunchConsole }) {
               <span className="ln"><span>resolution.</span></span>
             </h1>
             <p className="lede">
-              SENTINEL ingests telemetry, correlates distributed incident graphs, and ranks root causes in real time, so nothing gets dropped between steps and every decision stays traceable.
+              SENTINEL correlates distributed telemetry into causal incident graphs, ranks root causes with probabilistic inference, and executes verified remediations with human guardrails.
             </p>
             <div className="cta-row">
               <button type="button" className="btn solid" onClick={onLaunchConsole}>Start investigating →</button>
@@ -1096,7 +1096,7 @@ export default function LandingPage({ onLaunchConsole }) {
             </div>
             <div className="meta">
               <span><b>18ms</b> median triage</span>
-              <span><b>99.4%</b> run success</span>
+              <span><b>99.4%</b> diagnosis accuracy</span>
               <span><b>900+</b> teams</span>
             </div>
           </div>
@@ -1106,8 +1106,8 @@ export default function LandingPage({ onLaunchConsole }) {
               <div className="layer" data-depth="0">
                 <div className="flow">
                   <div className="fbar">
-                    <span>Incident triage</span>
-                    <span>4 services · 1 anomaly</span>
+                    <span>Incident Graph Engine</span>
+                    <span>5 services · 1 anomaly cluster</span>
                     <span className="live"><span className="dot"></span>LIVE</span>
                   </div>
                   <div className="fbody" id="fbody">
@@ -1128,7 +1128,7 @@ export default function LandingPage({ onLaunchConsole }) {
                     <span className="wl" style={{ left: '29%', top: '30%' }}>critical</span>
                     <span className="wl" style={{ left: '29%', top: '68%' }}>warning</span>
                     <div className="runs">
-                      <h6>LAST INCIDENTS</h6>
+                      <h6>LIVE INCIDENTS</h6>
                       <div id="runs"></div>
                     </div>
                   </div>
@@ -1136,10 +1136,10 @@ export default function LandingPage({ onLaunchConsole }) {
                 </div>
               </div>
               <div className="layer" data-depth="90">
-                <div className="chip chip1 glass"><i>●</i> <span id="c1">1,284</span> incidents resolved today</div>
+                <div className="chip chip1 glass"><i>●</i> <span id="c1">2,410</span> incidents resolved today</div>
               </div>
               <div className="layer" data-depth="140">
-                <div className="chip chip2 glass"><i>●</i> telemetry → root-cause · <span id="c2">18</span> ms</div>
+                <div className="chip chip2 glass"><i>●</i> causal graph → root cause · <span id="c2">18</span> ms</div>
               </div>
             </div>
           </div>
@@ -1170,7 +1170,7 @@ export default function LandingPage({ onLaunchConsole }) {
 
         <section className="rev" id="rev">
           <div className="pin">
-            <p id="revp" aria-label="Distributed systems are getting more complex every month. The gaps between them are where work quietly breaks. SENTINEL closes those gaps."></p>
+            <p id="revp" aria-label="Distributed systems are getting more complex every month. The gaps between them are where outages quietly breed. SENTINEL closes those gaps."></p>
           </div>
         </section>
 
@@ -1187,7 +1187,7 @@ export default function LandingPage({ onLaunchConsole }) {
               <h2>Give your production systems a sentient guardrail.</h2>
               <div className="cta-row">
                 <button type="button" className="btn solid" onClick={onLaunchConsole}>Launch Console →</button>
-                <a className="btn ghost glass" href="#how">Talk to us</a>
+                <a className="btn ghost glass" href="#how">Explore Architecture</a>
               </div>
             </div>
           </div>

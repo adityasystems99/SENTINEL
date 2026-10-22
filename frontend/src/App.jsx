@@ -179,6 +179,7 @@ export default function App() {
           project={activeProject}
           onSelectFeature={(featureId) => setCurrentView(`workspace-${featureId}`)}
           onBackToEntry={() => setCurrentView('entry')}
+          onBackToLanding={() => setCurrentView('landing')}
         />
       )}
 

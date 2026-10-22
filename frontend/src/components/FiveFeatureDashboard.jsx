@@ -21,6 +21,7 @@ export default function FiveFeatureDashboard({
   project,
   onSelectFeature,
   onBackToEntry,
+  onBackToLanding,
 }) {
   const features = [
     {
@@ -97,6 +98,28 @@ export default function FiveFeatureDashboard({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {onBackToLanding && (
+            <button
+              onClick={onBackToLanding}
+              style={{
+                background: 'rgba(255, 122, 61, 0.12)',
+                border: '1px solid rgba(255, 122, 61, 0.4)',
+                borderRadius: '9px',
+                color: '#ff7a3d',
+                padding: '8px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              ← Home Landing
+            </button>
+          )}
+
           <button
             onClick={onBackToEntry}
             style={{
