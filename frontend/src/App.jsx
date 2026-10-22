@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import LandingPage from './components/LandingPage';
 import LoadingScreen from './components/LoadingScreen';
 import ProjectEntry from './components/ProjectEntry';
 import FiveFeatureDashboard from './components/FiveFeatureDashboard';
@@ -18,7 +19,7 @@ import {
 } from './api/client';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('loading'); // loading | entry | dashboard | workspace-*
+  const [currentView, setCurrentView] = useState('landing'); // landing | loading | entry | dashboard | workspace-*
   const [health, setHealth] = useState(null);
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
@@ -28,7 +29,7 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Initial load
+  // Background initialization of data
   useEffect(() => {
     async function initApp() {
       try {
@@ -44,13 +45,9 @@ export default function App() {
         if (projList && projList.length > 0) {
           const firstProj = await fetchProjectMetadata(projList[0].project_id).catch(() => null);
           setActiveProject(firstProj);
-          setCurrentView('dashboard');
-        } else {
-          setCurrentView('entry');
         }
       } catch (err) {
         console.error('App init error:', err);
-        setCurrentView('entry');
       }
     }
     initApp();
@@ -120,19 +117,53 @@ export default function App() {
     }
   };
 
-  // 1. Loading Page (features hero particle vortex)
+  const handleLaunchConsole = () => {
+    if (activeProject) {
+      setCurrentView('dashboard');
+    } else {
+      setCurrentView('entry');
+    }
+  };
+
+  // 1. Landing Page (Default View)
+  if (currentView === 'landing') {
+    return <LandingPage onLaunchConsole={handleLaunchConsole} />;
+  }
+
+  // 2. Loading Page
   if (currentView === 'loading') {
     return <LoadingScreen message="Initializing SENTINEL Intelligence Engine & Workspaces..." />;
   }
 
-  // 2. Project Entry Page (features hero particle vortex & START A PROJECT)
+  // 3. Project Entry Page
   if (currentView === 'entry') {
     return (
-      <ProjectEntry
-        existingProjects={projects}
-        onProjectReady={handleProjectReady}
-        onSelectExisting={handleSelectExistingProject}
-      />
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={() => setCurrentView('landing')}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '20px',
+            zIndex: 100,
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(115, 217, 245, 0.25)',
+            color: '#f2eff7',
+            padding: '8px 16px',
+            borderRadius: '999px',
+            fontSize: '13px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          ← Home Landing
+        </button>
+        <ProjectEntry
+          existingProjects={projects}
+          onProjectReady={handleProjectReady}
+          onSelectExisting={handleSelectExistingProject}
+        />
+      </div>
     );
   }
 
@@ -142,7 +173,7 @@ export default function App() {
       {/* Subtle ambient 3D particle vortex backdrop */}
       <ParticleVortex mode="ambient" />
 
-      {/* 3. Five-Feature Dashboard */}
+      {/* 4. Five-Feature Dashboard */}
       {currentView === 'dashboard' && (
         <FiveFeatureDashboard
           project={activeProject}
@@ -151,7 +182,7 @@ export default function App() {
         />
       )}
 
-      {/* 4. Feature Workspaces */}
+      {/* 5. Feature Workspaces */}
       {currentView === 'workspace-incidents' && (
         <LiveIncidentWorkspace
           project={activeProject}
